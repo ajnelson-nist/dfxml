@@ -65,12 +65,20 @@ matrix:
         - pytest
     - language: cpp
       os: linux
+      addons:
+        apt:
+          packages:
+            - exiv2
       before_script:
         - cd src
       script:
         - ./bootstrap.sh && ./configure && make && make check
     - language: cpp
       os: osx
+      addons:
+        homebrew:
+          packages:
+            - exiv2
       before_script:
         - cd src
       script:
