@@ -781,6 +781,7 @@ class DiskImageObject(object):
       "child_objects",
       "externals",
       "files",
+      "filesize",
       "partition_systems",
       "sector_size",
       "volumes"
@@ -792,6 +793,7 @@ class DiskImageObject(object):
         self._byte_runs = None
         self._child_objects = []
         self._files = []
+        self._filesize = None
         self._partition_systems = []
         self._sector_size = None
         self._volumes = []
@@ -916,6 +918,11 @@ class DiskImageObject(object):
             value = getattr(self, prop)
             _append_el(prop, value)
 
+        for prop in [
+          "filesize"
+        ]:
+            _append_str(prop)
+
         if self.byte_runs:
             outel.append(self.byte_runs.to_Element())
 
@@ -944,6 +951,14 @@ class DiskImageObject(object):
     def files(self):
         """List of file objects directly attached to this DiskImageObject.  No setter for now."""
         return self._files
+
+    @property
+    def filesize(self):
+        return self._filesize
+
+    @filesize.setter
+    def filesize(self, val):
+        self._filesize = _intcast(val)
 
     @property
     def partition_systems(self):

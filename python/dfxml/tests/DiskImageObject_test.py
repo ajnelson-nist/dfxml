@@ -105,3 +105,36 @@ def test_sector_size():
         _logger.debug("tmp_filename = %r." % tmp_filename)
         raise
     os.remove(tmp_filename)
+
+def test_filesize():
+    # TODO Upgrade to 1.3.0 on schema release.
+    dobj = Objects.DFXMLObject(version="1.2.0+")
+    diobj = Objects.DiskImageObject()
+    dobj.append(diobj)
+
+    diobj.filesize = 2 * 2**30
+
+    brs = Objects.ByteRuns()
+    diobj.byte_runs = brs
+
+    br1 = Objects.ByteRun()
+    br1.img_offset = 0
+    br1.len = 512
+    brs.append(br1)
+
+    br2 = Objects.ByteRun()
+    br2.img_offset = 512
+    br2.len = 2 * 2**30 - 512
+    brs.append(br2)
+
+    assert sum([x.len for x in diobj.byte_runs]) == diobj.filesize
+
+    # Do file I/O round trip.
+    (tmp_filename, dobj_reconst) = _file_round_trip_dfxmlobject(dobj)
+    diobj_reconst = dobj_reconst.disk_images[0]
+    try:
+        assert sum([x.len for x in diobj_reconst.byte_runs]) == diobj_reconst.filesize
+    except:
+        _logger.debug("tmp_filename = %r." % tmp_filename)
+        raise
+    os.remove(tmp_filename)
