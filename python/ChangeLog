@@ -2,6 +2,7 @@
 
 	* Python: Relax schema presence check for local pytest builds
 	* objects.py: Add and test filesize of diskimageobject element
+	* objects.py: Add and test hashes to DiskImageObject
 
 2019-11-01    <alexander.nelson@nist.gov>
 

@@ -782,10 +782,27 @@ class DiskImageObject(object):
       "externals",
       "files",
       "filesize",
+      "md5",
+      "md6",
       "partition_systems",
       "sector_size",
+      "sha1",
+      "sha224",
+      "sha256",
+      "sha384",
+      "sha512",
       "volumes"
     ])
+
+    _hash_properties = {
+      "md5",
+      "md6",
+      "sha1",
+      "sha224",
+      "sha256",
+      "sha384",
+      "sha512"
+    }
 
     def __init__(self, *args, **kwargs):
         self.externals = kwargs.get("externals", OtherNSElementList())
@@ -797,6 +814,9 @@ class DiskImageObject(object):
         self._partition_systems = []
         self._sector_size = None
         self._volumes = []
+
+        for prop in DiskImageObject._hash_properties:
+            setattr(self, "_" + prop, None)
 
     def __iter__(self):
         """Recursively yields all child Objects in depth-first order."""
@@ -848,6 +868,13 @@ class DiskImageObject(object):
             elif ctn == "byte_run":
                 #byte_runs' block recursively handles this element.
                 continue
+            elif ctn == "hashdigest":
+                if "type" not in ce.attrib:
+                    raise AttributeError("Attribute 'type' not found.  Every hashdigest element should have a 'type' attribute to identify the hash type.")
+                hash_type = ce.attrib["type"].lower()
+                if not hash_type in DiskImageObject._hash_properties:
+                    raise ValueError("Unexpected hashdigest type: %r." % hash_type)
+                setattr(self, hash_type, ce.text)
             elif ctn in DiskImageObject._all_properties:
                 setattr(self, ctn, ce.text)
             else:
@@ -914,6 +941,13 @@ class DiskImageObject(object):
             if _keep:
                 outel.append(tmpel)
 
+        def _append_hash(name, value):
+            if not value is None:
+                tmpel = ET.Element("hashdigest")
+                tmpel.attrib["type"] = name
+                tmpel.text = value
+                outel.append(tmpel)
+
         def _append_str(prop):
             value = getattr(self, prop)
             _append_el(prop, value)
@@ -925,6 +959,9 @@ class DiskImageObject(object):
 
         if self.byte_runs:
             outel.append(self.byte_runs.to_Element())
+
+        for prop in DiskImageObject._hash_properties:
+            _append_hash(prop, getattr(self, prop))
 
         for prop in [
           "sector_size"
@@ -961,6 +998,22 @@ class DiskImageObject(object):
         self._filesize = _intcast(val)
 
     @property
+    def md5(self):
+        return self._md5
+
+    @md5.setter
+    def md5(self, val):
+        self._md5 = _strcast(val)
+
+    @property
+    def md6(self):
+        return self._md6
+
+    @md6.setter
+    def md6(self, val):
+        self._md6 = _strcast(val)
+
+    @property
     def partition_systems(self):
         """List of partition system objects directly attached to this DiskImageObject.  No setter for now."""
         return self._partition_systems
@@ -972,6 +1025,46 @@ class DiskImageObject(object):
     @sector_size.setter
     def sector_size(self, val):
         self._sector_size = _intcast(val)
+
+    @property
+    def sha1(self):
+        return self._sha1
+
+    @sha1.setter
+    def sha1(self, val):
+        self._sha1 = _strcast(val)
+
+    @property
+    def sha224(self):
+        return self._sha224
+
+    @sha224.setter
+    def sha224(self, val):
+        self._sha224 = _strcast(val)
+
+    @property
+    def sha256(self):
+        return self._sha256
+
+    @sha256.setter
+    def sha256(self, val):
+        self._sha256 = _strcast(val)
+
+    @property
+    def sha384(self):
+        return self._sha384
+
+    @sha384.setter
+    def sha384(self, val):
+        self._sha384 = _strcast(val)
+
+    @property
+    def sha512(self):
+        return self._sha512
+
+    @sha512.setter
+    def sha512(self, val):
+        self._sha512 = _strcast(val)
 
     @property
     def volumes(self):
@@ -2991,20 +3084,12 @@ class FileObject(object):
                     self.byte_runs = ByteRuns()
                     self.byte_runs.populate_from_Element(ce)
             elif ctn == "hashdigest":
-                if ce.attrib["type"].lower() == "md5":
-                    self.md5 = ce.text
-                elif ce.attrib["type"].lower() == "md6":
-                    self.md6 = ce.text
-                elif ce.attrib["type"].lower() == "sha1":
-                    self.sha1 = ce.text
-                elif ce.attrib["type"].lower() == "sha224":
-                    self.sha224 = ce.text
-                elif ce.attrib["type"].lower() == "sha256":
-                    self.sha256 = ce.text
-                elif ce.attrib["type"].lower() == "sha384":
-                    self.sha384 = ce.text
-                elif ce.attrib["type"].lower() == "sha512":
-                    self.sha512 = ce.text
+                if "type" not in ce.attrib:
+                    raise AttributeError("Attribute 'type' not found.  Every hashdigest element should have a 'type' attribute to identify the hash type.")
+                hash_type = ce.attrib["type"].lower()
+                if not hash_type in FileObject._hash_properties:
+                    raise ValueError("Unexpected hashdigest type: %r." % hash_type)
+                setattr(self, hash_type, ce.text)
             elif ctn == "original_fileobject":
                 self.original_fileobject = FileObject()
                 self.original_fileobject.populate_from_Element(ce)

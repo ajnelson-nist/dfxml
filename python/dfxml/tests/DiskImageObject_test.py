@@ -17,6 +17,7 @@ __version__ = "0.1.2"
 
 import os
 import sys
+import hashlib
 import logging
 import subprocess
 import tempfile
@@ -107,7 +108,7 @@ def test_sector_size():
     os.remove(tmp_filename)
 
 def test_filesize():
-    # TODO Upgrade to 1.3.0 on schema release.
+    # TODO Upgrade to 1.3.0 on release.
     dobj = Objects.DFXMLObject(version="1.2.0+")
     diobj = Objects.DiskImageObject()
     dobj.append(diobj)
@@ -134,6 +135,32 @@ def test_filesize():
     diobj_reconst = dobj_reconst.disk_images[0]
     try:
         assert sum([x.len for x in diobj_reconst.byte_runs]) == diobj_reconst.filesize
+    except:
+        _logger.debug("tmp_filename = %r." % tmp_filename)
+        raise
+    os.remove(tmp_filename)
+
+def test_hashes():
+    # TODO Upgrade to 1.3.0 on release.
+    dobj = Objects.DFXMLObject(version="1.2.0+")
+    diobj = Objects.DiskImageObject()
+    dobj.append(diobj)
+
+    diobj.filesize = 4
+
+    sha512obj = hashlib.sha512()
+    sha512obj.update(b"abcd")
+    hash_value = sha512obj.hexdigest()
+
+    diobj.sha512 = hash_value
+
+    assert diobj.sha512 == hash_value
+
+    # Do file I/O round trip.
+    (tmp_filename, dobj_reconst) = _file_round_trip_dfxmlobject(dobj)
+    diobj_reconst = dobj_reconst.disk_images[0]
+    try:
+        assert diobj_reconst.sha512 == hash_value
     except:
         _logger.debug("tmp_filename = %r." % tmp_filename)
         raise
