@@ -11,20 +11,45 @@
 #
 # We would appreciate acknowledgement if the software is used.
 
-SHELL ?= /bin/bash
-
-SCHEMA_REPOSITORY_URL ?= https://github.com/dfxml-working-group/dfxml_schema.git
+# While SHELL would typically be set with ":=" assignment, some
+# environments do not have Bash at /bin/bash (e.g. FreeBSD stores Bash
+# at /usr/local/bin/bash).
+ifeq ($(shell basename $(SHELL)),sh)
+SHELL := $(shell which /bin/bash 2>/dev/null || which /usr/local/bin/bash)
+endif
 
 all:
 
-.PHONY: \
-  schema-init
+.git_submodule_init.done.log: .gitmodules
+	# Confirm dfxml_schema has been checked out at least once.
+	test -r dependencies/dfxml_schema/dfxml.xsd \
+	  || (git submodule init dependencies/dfxml_schema && git submodule update dependencies/dfxml_schema)
+	test -r dependencies/dfxml_schema/dfxml.xsd
+	touch $@
 
-schema-init: \
-  schema/dfxml.xsd
+clean:
+	find . -name '*~' -exec rm {} \;
+	(cd tests;make clean)
+	(cd dfxml/bin;make clean)
+	(cd dfxml/tests;make clean)
 
-schema/dfxml.xsd: \
-  dfxml_schema_commit.txt
-	if [ -z "$(SCHEMA_REPOSITORY_URL)" ]; then echo 'ERROR:Makefile:Please provide a URL for the Makefile parameter SCHEMA_REPOSITORY_URL.' >&2 ; exit 1 ; fi
-	if [ ! -d schema ]; then git clone $(SCHEMA_REPOSITORY_URL) schema ; cd schema ; git checkout $$(head -n1 ../dfxml_schema_commit.txt) ; fi
-	test -r $@ && touch $@
+check: .git_submodule_init.done.log
+	$(MAKE) \
+	  SHELL=$(SHELL) \
+	  --directory tests \
+	  check
+	source tests/venv/bin/activate \
+	  && mypy \
+	    dfxml/tests
+	source tests/venv/bin/activate \
+	  && pytest \
+	    --log-level=DEBUG \
+	    dfxml/tests
+
+check-tools:
+	(cd dfxml/bin;make check)
+	@echo performing checks currently in Travis
+
+check-core:
+	cd dfxml
+	PYTHONPATH=./bin python3 -m pytest dfxml
