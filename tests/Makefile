@@ -18,7 +18,7 @@ endif
 
 top_srcdir := $(shell cd .. ; pwd)
 
-PYTHON3 ?= $(shell which python3.9 2>/dev/null || which python3.8 2>/dev/null || which python3.7 2>/dev/null || which python3.6 2>/dev/null || which python3)
+PYTHON3 ?= python3
 ifeq ($(PYTHON3),)
 $(error python3 not found)
 endif
@@ -31,7 +31,7 @@ all: \
   all-make_differential_dfxml \
   all-walk_to_dfxml \
   check-mypy \
-  check-mypy-strict
+  check-mypy-stricter
 
 all-make_differential_dfxml: \
   .venv.done.log
@@ -75,31 +75,35 @@ check: \
 
 #TODO - Type-checking would best be done against all of ../dfxml, when someone finds some time to do so.
 check-mypy: \
-  check-mypy-strict
+  check-mypy-stricter
 	source venv/bin/activate \
 	  && mypy \
 	    ../dfxml/bin/idifference.py \
 	    ../dfxml/bin/summarize_differential_dfxml.py \
-	    ../dfxml/bin/tests \
 	    ../dfxml/__init__.py \
+	    ../dfxml/fiwalk.py \
 	    ../dfxml/objects.py \
-	    ../dfxml/tests
+	    misc_bin_tests \
+	    misc_object_tests
 	@echo "INFO:tests/Makefile:mypy is currently run against a subset of the dfxml directory." >&2
 
 #TODO - Strict type-checking is another long-term goal, likewise eventually done against all of ../dfxml.
-check-mypy-strict: \
+check-mypy-stricter: \
   .venv.done.log
 	source venv/bin/activate \
 	  && mypy \
-	    --strict \
-	    . \
+	    ../demos/demo_fiwalk_diskimage.py \
 	    ../dfxml/bin/idifference2.py \
 	    ../dfxml/bin/make_differential_dfxml.py \
 	    ../dfxml/bin/walk_to_dfxml.py \
-	    ../dfxml/tests/FileObject_test.py \
-	    ../dfxml/tests/storage_layers_test.py
+	    make_differential_dfxml \
+	    walk_to_dfxml \
+	    *.py
 
 clean:
+	@$(MAKE) \
+	  --directory misc_object_tests \
+	  clean
 	@$(MAKE) \
 	  --directory make_differential_dfxml \
 	  clean

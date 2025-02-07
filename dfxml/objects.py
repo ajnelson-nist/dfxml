@@ -1,4 +1,3 @@
-
 # This software was developed at the National Institute of Standards
 # and Technology in whole or in part by employees of the Federal
 # Government in the course of their official duties. Pursuant to
@@ -22,7 +21,7 @@ With this module, reading disk images or DFXML files is done with the parse or i
 # Further explanation is on PEPs 484 and 563, via: https://stackoverflow.com/a/33533514
 from __future__ import annotations
 
-__version__ = "0.12.0"
+__version__ = "0.13.0"
 
 # Revision Log
 # 2018-07-22 @simsong - removed calls to logging, since this module shouldn't create log files.
@@ -32,26 +31,25 @@ __version__ = "0.12.0"
 # Remaining roadmap to 1.0.0:
 # * Documentation.
 # * User testing.
-# * Compatibility with the DFXML schema, version >1.1.1.
+# * Compatibility with the DFXML schema, version >=2.0.0.
 
 import abc
-import logging
-import re
 import copy
-import xml.etree.ElementTree as ET
-import subprocess
+import logging
 import os
-import sys
-import struct
 import platform
+import re
+import struct
+import subprocess
+import sys
 import typing
 import warnings
+import xml.etree.ElementTree as ET
 
 # The following allows us to import the dfxml module as dfxml
 # There may be a cleaner way to do this.
-sys.path.append( os.path.dirname(__file__) + "/..")
+sys.path.append(os.path.dirname(__file__) + "/..")
 import dfxml  # type: ignore
-
 
 _logger = logging.getLogger(os.path.basename(__file__))
 
@@ -68,6 +66,7 @@ _warned_byterun_facets = set([])
 XMLNS_REGXML = "http://www.forensicswiki.org/wiki/RegXML"
 XMLNS_DFXML_EXT = dfxml.XMLNS_DFXML + "#extensions"
 
+
 def _ET_tostring(e):
     """Between Python v2 and v3, there are some differences in the ElementTree library's tostring() behavior.  One, the method balks at the "unicode" encoding in v2.  Two, in 2, the XML prototypes output with every invocation.  This method serves as a wrapper to deal with those issues, plus another issue where ET.tostring prints repeated xmlns declarations (observed on reading and writing a DFXML file twice in the same process).  The repeated prints appear to be from a lack of inspection of existing namespace declarations in the attributes dictionary."""
     retval = None
@@ -75,13 +74,13 @@ def _ET_tostring(e):
         tmp = ET.tostring(e, encoding="UTF-8")
         if tmp[0:2] == "<?":
             # Trim away first line; it's an XML prototype.  This only appears in Python 2's ElementTree output.
-            retval = tmp[ tmp.find("?>\n")+3 : ]
+            retval = tmp[tmp.find("?>\n") + 3 :]
         else:
             retval = tmp
     else:
         retval = ET.tostring(e, encoding="unicode")
     container_end = retval.index(">")
-    for (uri, prefix) in list(ET._namespace_map.items()):
+    for uri, prefix in list(ET._namespace_map.items()):
         if prefix == "":
             xmlns_attr_name = "xmlns"
         else:
@@ -89,10 +88,17 @@ def _ET_tostring(e):
         xmlns_attr_string = '%s="%s"' % (xmlns_attr_name, uri)
         xmlns_attr_tally = retval.count(xmlns_attr_string, 0, container_end)
         if xmlns_attr_tally > 1:
-            _logger.info("ET.tostring() printed a repeated xmlns declaration: %r.  Trimming %d repetition(s)." % (xmlns_attr_string, xmlns_attr_tally-1))
-            container_string = retval[ : container_end+1 ]
-            retval = container_string.replace(xmlns_attr_string, "", xmlns_attr_tally-1) + retval[ container_end+1 : ]
+            _logger.info(
+                "ET.tostring() printed a repeated xmlns declaration: %r.  Trimming %d repetition(s)."
+                % (xmlns_attr_string, xmlns_attr_tally - 1)
+            )
+            container_string = retval[: container_end + 1]
+            retval = (
+                container_string.replace(xmlns_attr_string, "", xmlns_attr_tally - 1)
+                + retval[container_end + 1 :]
+            )
     return retval
+
 
 def _boolcast(val):
     """Takes Boolean values, and 0 or 1 in string or integer form, and casts them all to Boolean.  Preserves nulls.  Balks at everything else."""
@@ -108,7 +114,10 @@ def _boolcast(val):
         return _val == 1
 
     _logger.debug("val = " + repr(val))
-    raise ValueError("Received a not-straightforwardly-Boolean value.  Expected some form of 0, 1, True, or False.")
+    raise ValueError(
+        "Received a not-straightforwardly-Boolean value.  Expected some form of 0, 1, True, or False."
+    )
+
 
 def _bytecast(val):
     """Casts a value as a byte string.  If a character string, assumes a UTF-8 encoding."""
@@ -118,9 +127,8 @@ def _bytecast(val):
         return val
     return _strcast(val).encode("utf-8")
 
-def _intcast(
-  val : typing.Optional[typing.Any]
-) -> typing.Optional[int]:
+
+def _intcast(val: typing.Optional[typing.Any]) -> typing.Optional[int]:
     """Casts input integer or string to integer.  Preserves nulls.  Balks at everything else."""
     if val is None:
         return None
@@ -139,49 +147,55 @@ def _intcast(
                 return int(val)
 
     _logger.debug("val = " + repr(val))
-    raise ValueError("Received a non-int-castable value.  Expected an integer or an integer as a string.")
+    raise ValueError(
+        "Received a non-int-castable value.  Expected an integer or an integer as a string."
+    )
 
-def _read_differential_annotations(annodict, element, annoset):
+
+def _read_differential_annotations(
+    annodict: typing.Dict[str, str], element, annoset: typing.Set[str]
+) -> None:
     """
     Uses the shorthand-to-attribute mappings of annodict to translate attributes of element into annoset.
     """
-    #_logger.debug("annoset, before: %r." % annoset)
+    # _logger.debug("annoset, before: %r." % annoset)
     # Start with inverting the dictionary.
-    _d = { annodict[k].replace("delta:",""):k for k in annodict }
-    #_logger.debug("Inverted dictionary: _d = %r" % _d)
+    _d = {annodict[k].replace("{%s}" % dfxml.XMLNS_DELTA, ""): k for k in annodict}
+    # _logger.debug("Inverted dictionary: _d = %r" % _d)
     for attr in element.attrib:
-        #_logger.debug("Looking for differential annotations: %r" % element.attrib)
+        # _logger.debug("Looking for differential annotations: %r" % element.attrib)
         (ns, an) = _qsplit(attr)
         if an in _d and ns == dfxml.XMLNS_DELTA:
-            #_logger.debug("Found; adding %r." % _d[an])
+            # _logger.debug("Found; adding %r." % _d[an])
             annoset.add(_d[an])
-    #_logger.debug("annoset, after: %r." % annoset)
+    # _logger.debug("annoset, after: %r." % annoset)
 
-def _qsplit(tagname):
+
+def _qsplit(tagname: str) -> typing.Tuple[typing.Optional[str], str]:
     """Requires string input.  Returns namespace and local tag name as a pair.  I could've sworn this was a basic implementation gimme, but ET.QName ain't it."""
     _typecheck(tagname, str)
     if tagname[0] == "{":
         i = tagname.rfind("}")
-        return ( tagname[1:i], tagname[i+1:] )
+        return (tagname[1:i], tagname[i + 1 :])
     else:
         return (None, tagname)
 
-def _strcast(
-  val : typing.Optional[typing.Any]
-) -> typing.Optional[str]:
+
+def _strcast(val: typing.Optional[typing.Any]) -> typing.Optional[str]:
     if val is None:
         return None
     return str(val)
 
+
 def _typecheck(
-  obj : object,
-  classinfo : typing.Union[type, typing.Tuple[type, ...]]
+    obj: object, classinfo: typing.Union[type, typing.Tuple[type, ...]]
 ) -> None:
     if not isinstance(obj, classinfo):
         _logger.info("obj = " + repr(obj))
         if isinstance(classinfo, tuple):
-
-            raise TypeError("Expecting object to be one of the types %r." % (classinfo,))
+            raise TypeError(
+                "Expecting object to be one of the types %r." % (classinfo,)
+            )
         else:
             raise TypeError("Expecting object to be of type %r." % classinfo)
 
@@ -211,14 +225,11 @@ class AbstractParentObject(AbstractObject):
     """
 
     def __init__(self, *args, **kwargs) -> None:
-        self._child_objects : typing.Sequence[AbstractChildObject] = []
+        self._child_objects: typing.Sequence[AbstractChildObject] = []
         super().__init__(*args, **kwargs)
 
     @abc.abstractmethod
-    def append(
-      self,
-      value : AbstractChildObject
-    ) -> None:
+    def append(self, value: AbstractChildObject) -> None:
         """
         Note that this abstract method defines a broad type interface for the value argument.  Subclasses will have to rely on runtime enforcement of more restrictive type signatures.  This is to avoid violation of the Liskov Substitution Principle.
         https://mypy.readthedocs.io/en/stable/common_issues.html#incompatible-overrides
@@ -232,26 +243,30 @@ class AbstractParentObject(AbstractObject):
 
 
 class DFXMLObject(AbstractParentObject):
-
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(
+        self,
+        *args: typing.Any,
+        version: str = dfxml.DFXML_VERSION,
+        **kwargs: typing.Any,
+    ) -> None:
         self.command_line = kwargs.get("command_line")
         self.program = kwargs.get("program")
         self.program_version = kwargs.get("program_version")
-        self.version = kwargs.get("version")
+        self.version = version
         self.sources = kwargs.get("sources", [])
         self.dc = kwargs.get("dc", dict())
         self.externals = kwargs.get("externals", OtherNSElementList())
         self.diff_file_ignores = kwargs.get("diff_file_ignores", set())
 
-        self._namespaces : typing.Dict[str, str] = dict()
-        self._disk_images : typing.List[DiskImageObject] = []
-        self._partition_systems : typing.List[PartitionSystemObject] = []
-        self._partitions : typing.List[PartitionObject] = []
-        self._volumes : typing.List[VolumeObject] = []
-        self._files : typing.List[FileObject] = []
+        self._namespaces: typing.Dict[str, str] = dict()
+        self._disk_images: typing.List[DiskImageObject] = []
+        self._partition_systems: typing.List[PartitionSystemObject] = []
+        self._partitions: typing.List[PartitionObject] = []
+        self._volumes: typing.List[VolumeObject] = []
+        self._files: typing.List[FileObject] = []
 
-        self._build_libraries : typing.List[LibraryObject] = []
-        self._creator_libraries : typing.List[LibraryObject] = []
+        self._build_libraries: typing.List[LibraryObject] = []
+        self._creator_libraries: typing.List[LibraryObject] = []
 
         for di in kwargs.get("disk_images", []):
             self.append(di)
@@ -287,15 +302,18 @@ class DFXMLObject(AbstractParentObject):
                     yield gco
 
     def _add_library(self, target_list, *args, **kwargs):
-        #_logger.debug("_add_library:args = %r." % (args,))
+        # _logger.debug("_add_library:args = %r." % (args,))
         _library = None
         if len(args) == 1 and isinstance(args[0], LibraryObject):
             _library = args[0]
         elif len(args) > 1 and isinstance(args[0], str) and isinstance(args[1], str):
             _library = LibraryObject(args[0], args[1])
         else:
-            raise ValueError("Unexpected arguments format (expecting (string, string) or a LibraryObject): %r." % (args,))
-        #_logger.debug("_library = %r." % _library)
+            raise ValueError(
+                "Unexpected arguments format (expecting (string, string) or a LibraryObject): %r."
+                % (args,)
+            )
+        # _logger.debug("_library = %r." % _library)
         if not _library is None:
             target_list.append(_library)
 
@@ -305,24 +323,26 @@ class DFXMLObject(AbstractParentObject):
     def add_creator_library(self, *args, **kwargs) -> None:
         self._add_library(self.creator_libraries, *args, **kwargs)
 
-    def add_namespace(
-      self,
-      prefix : str,
-      url : str
-    ) -> None:
+    def add_namespace(self, prefix: str, url: str) -> None:
         """In case of conflicting namespace definitions, first definition wins."""
-        #_logger.debug("self._namespaces.keys() = %r." % self._namespaces.keys())
+        # _logger.debug("self._namespaces.keys() = %r." % self._namespaces.keys())
         if prefix not in self._namespaces.keys():
-            #_logger.debug("Registering namespace: %r, %r." % (prefix, url))
+            # _logger.debug("Registering namespace: %r, %r." % (prefix, url))
             self._namespaces[prefix] = url
             ET.register_namespace(prefix, url)
-            #_logger.debug("ET namespaces after registration: %r." % ET._namespace_map)
+            # _logger.debug("ET namespaces after registration: %r." % ET._namespace_map)
 
-    def append(
-      self,
-      value : AbstractChildObject
-    ) -> None:
-        _typecheck(value, (DiskImageObject, PartitionSystemObject, PartitionObject, VolumeObject, FileObject))
+    def append(self, value: AbstractChildObject) -> None:
+        _typecheck(
+            value,
+            (
+                DiskImageObject,
+                PartitionSystemObject,
+                PartitionObject,
+                VolumeObject,
+                FileObject,
+            ),
+        )
         if isinstance(value, DiskImageObject):
             self.disk_images.append(value)
         elif isinstance(value, PartitionSystemObject):
@@ -370,14 +390,11 @@ class DFXMLObject(AbstractParentObject):
                 # Put all non-DFXML-namespace elements into the externals list.
                 self.externals.append(ce)
 
-    def print_dfxml(
-      self,
-      output_fh : typing.IO[str] = sys.stdout
-    ) -> None:
+    def print_dfxml(self, output_fh: typing.IO[str] = sys.stdout) -> None:
         """Memory-efficient DFXML document printer.  However, it assumes the whole element tree is already constructed."""
         pe = self.to_partial_Element()
         dfxml_wrapper = _ET_tostring(pe)
-        #_logger.debug("print_dfxml:dfxml_wrapper = %r." % dfxml_wrapper)
+        # _logger.debug("print_dfxml:dfxml_wrapper = %r." % dfxml_wrapper)
         dfxml_foot = "</dfxml>"
         # Check for an empty element.
         if dfxml_wrapper.strip()[-3:] == " />":
@@ -385,33 +402,46 @@ class DFXMLObject(AbstractParentObject):
         elif dfxml_wrapper.strip()[-2:] == "/>":
             dfxml_head = dfxml_wrapper.strip()[:-2] + ">"
         else:
-            dfxml_head = dfxml_wrapper.strip()[:-len(dfxml_foot)]
+            dfxml_head = dfxml_wrapper.strip()[: -len(dfxml_foot)]
 
         output_fh.write("""<?xml version="1.0"?>\n""")
         output_fh.write(dfxml_head)
         output_fh.write("\n")
 
-        _logger.debug("Writing %d disk image objects for the document object." % len(self.disk_images))
+        _logger.debug(
+            "Writing %d disk image objects for the document object."
+            % len(self.disk_images)
+        )
         for di in self._disk_images:
             di.print_dfxml(output_fh)
             output_fh.write("\n")
 
-        _logger.debug("Writing %d partition system objects for the document object." % len(self.partition_systems))
+        _logger.debug(
+            "Writing %d partition system objects for the document object."
+            % len(self.partition_systems)
+        )
         for ps in self._partition_systems:
             ps.print_dfxml(output_fh)
             output_fh.write("\n")
 
-        _logger.debug("Writing %d partition objects for the document object." % len(self.partitions))
+        _logger.debug(
+            "Writing %d partition objects for the document object."
+            % len(self.partitions)
+        )
         for p in self._partitions:
             p.print_dfxml(output_fh)
             output_fh.write("\n")
 
-        _logger.debug("Writing %d volume objects for the document object." % len(self.volumes))
+        _logger.debug(
+            "Writing %d volume objects for the document object." % len(self.volumes)
+        )
         for v in self._volumes:
             v.print_dfxml(output_fh)
             output_fh.write("\n")
 
-        _logger.debug("Writing %d file objects for the document object." % len(self.files))
+        _logger.debug(
+            "Writing %d file objects for the document object." % len(self.files)
+        )
         for f in self._files:
             e = f.to_Element()
             output_fh.write(_ET_tostring(e))
@@ -424,11 +454,11 @@ class DFXMLObject(AbstractParentObject):
         outel = self.to_partial_Element()
         # List children grouped by type, in order per DFXML schema.
         for child_list in [
-          self.disk_images,
-          self.partition_systems,
-          self.partitions,
-          self.volumes,
-          self.files
+            self.disk_images,
+            self.partition_systems,
+            self.partitions,
+            self.volumes,
+            self.files,
         ]:
             for obj in child_list:
                 tmpel = obj.to_Element()
@@ -445,7 +475,7 @@ class DFXMLObject(AbstractParentObject):
         _logger.debug("self.diff_file_ignores = %r." % self.diff_file_ignores)
         for diff_file_ignore in sorted(self.diff_file_ignores):
             self.add_namespace("delta", dfxml.XMLNS_DELTA)
-            tmpel0 = ET.Element("delta:file_ignore")
+            tmpel0 = ET.Element("{%s}file_ignore" % dfxml.XMLNS_DELTA)
             tmpel0.text = diff_file_ignore
             outel.append(tmpel0)
 
@@ -456,17 +486,21 @@ class DFXMLObject(AbstractParentObject):
         for key in sorted(self.dc):
             _typecheck(key, str)
             if ":" in key:
-                raise ValueError("Dublin Core key-value entries should have keys without the colon character.  If this causes an interesting namespace issue for you, please report it as a bug.")
+                raise ValueError(
+                    "Dublin Core key-value entries should have keys without the colon character.  If this causes an interesting namespace issue for you, please report it as a bug."
+                )
             tmpel1 = ET.Element("dc:" + key)
             tmpel1.text = self.dc[key]
             tmpel0.append(tmpel1)
         outel.append(tmpel0)
 
-        if self.command_line or \
-          self.program or \
-          self.program_version or \
-          0 < len(self.build_libraries) or \
-          0 < len(self.creator_libraries):
+        if (
+            self.command_line
+            or self.program
+            or self.program_version
+            or 0 < len(self.build_libraries)
+            or 0 < len(self.creator_libraries)
+        ):
             tmpel0 = ET.Element("creator")
             if self.program:
                 tmpel1 = ET.Element("program")
@@ -506,14 +540,14 @@ class DFXMLObject(AbstractParentObject):
 
         # Apparently, namespace setting is only available with the write() function, which is memory-impractical for significant uses of DFXML.
         # Ref: http://docs.python.org/3.3/library/xml.etree.elementtree.html#xml.etree.ElementTree.ElementTree.write
-        for (prefix, url) in self.iter_namespaces():
+        for prefix, url in self.iter_namespaces():
             if prefix == "":
                 attrib_name = "xmlns"
             else:
                 attrib_name = "xmlns:" + prefix
             outel.attrib[attrib_name] = url
-        #_logger.debug("ET namespaces at outel generation: %r." % ET._namespace_map)
-        #_logger.debug("outel.attrib = %r." % outel.attrib)
+        # _logger.debug("ET namespaces at outel generation: %r." % ET._namespace_map)
+        # _logger.debug("outel.attrib = %r." % outel.attrib)
 
         return outel
 
@@ -549,10 +583,7 @@ class DFXMLObject(AbstractParentObject):
         return self._diff_file_ignores
 
     @diff_file_ignores.setter
-    def diff_file_ignores(
-      self,
-      value : typing.Set[str]
-    ) -> None:
+    def diff_file_ignores(self, value: typing.Set[str]) -> None:
         _typecheck(value, set)
         self._diff_file_ignores = value
 
@@ -578,7 +609,9 @@ class DFXMLObject(AbstractParentObject):
 
     @property
     def namespaces(self):
-        raise AttributeError("The namespaces dictionary should not be directly accessed; instead, use .iter_namespaces().")
+        raise AttributeError(
+            "The namespaces dictionary should not be directly accessed; instead, use .iter_namespaces()."
+        )
 
     @property
     def partition_systems(self):
@@ -633,7 +666,6 @@ class DFXMLObject(AbstractParentObject):
 
 
 class LibraryObject(AbstractObject):
-
     def __init__(self, *args, **kwargs):
         self.name = None
         self.version = None
@@ -645,7 +677,7 @@ class LibraryObject(AbstractObject):
 
         super().__init__(*args, **kwargs)
 
-    def __eq__(self, other : object) -> bool:
+    def __eq__(self, other: object) -> bool:
         """
         This equality function tests the name and version values strictly.  For less-strict testing, like allowing matching on missing versions, use relaxed_eq.
         This function can compare against another LibraryObject.
@@ -656,8 +688,7 @@ class LibraryObject(AbstractObject):
         if not isinstance(other, LibraryObject):
             return False
 
-        return self.name == other.name and \
-          self.version == other.version
+        return self.name == other.name and self.version == other.version
 
     def __repr__(self):
         parts = []
@@ -711,7 +742,6 @@ class LibraryObject(AbstractObject):
 
 
 class RegXMLObject(AbstractParentObject):
-
     def __init__(self, *args, **kwargs):
         self.command_line = kwargs.get("command_line")
         self.interpreter = kwargs.get("interpreter")
@@ -723,7 +753,7 @@ class RegXMLObject(AbstractParentObject):
         self._hives = []
         self._cells = []
         self._namespaces = dict()
-        input_hives = kwargs.get("hives") or [] # In case kwargs["hives"] = None.
+        input_hives = kwargs.get("hives") or []  # In case kwargs["hives"] = None.
         input_cells = kwargs.get("cells") or []
         for hive in input_hives:
             self.append(hive)
@@ -731,7 +761,7 @@ class RegXMLObject(AbstractParentObject):
             self.append(cells)
 
         # Add default namespaces.
-        #TODO This will cause a problem when the Objects bindings are used for a DFXML document and RegXML document in the same program.
+        # TODO This will cause a problem when the Objects bindings are used for a DFXML document and RegXML document in the same program.
         self.add_namespace("", XMLNS_REGXML)
 
         super().__init__(*args, **kwargs)
@@ -749,10 +779,7 @@ class RegXMLObject(AbstractParentObject):
         self._namespaces[prefix] = url
         ET.register_namespace(prefix, url)
 
-    def append(
-      self,
-      value : AbstractChildObject
-    ) -> None:
+    def append(self, value: AbstractChildObject) -> None:
         _typecheck(value, (HiveObject, CellObject))
         if isinstance(value, HiveObject):
             self._hives.append(value)
@@ -763,7 +790,7 @@ class RegXMLObject(AbstractParentObject):
     def print_regxml(self, output_fh=sys.stdout):
         """Serializes and prints the entire object, without constructing the whole tree."""
         regxml_wrapper = _ET_tostring(self.to_partial_Element())
-        #_logger.debug("regxml_wrapper = %r." % regxml_wrapper)
+        # _logger.debug("regxml_wrapper = %r." % regxml_wrapper)
         regxml_foot = "</regxml>"
         # Check for an empty element.
         if regxml_wrapper.strip()[-3:] == " />":
@@ -771,7 +798,7 @@ class RegXMLObject(AbstractParentObject):
         elif regxml_wrapper.strip()[-2:] == "/>":
             regxml_head = regxml_wrapper.strip()[:-2] + ">"
         else:
-            regxml_head = regxml_wrapper.strip()[:-len(regxml_foot)]
+            regxml_head = regxml_wrapper.strip()[: -len(regxml_foot)]
 
         output_fh.write(regxml_head)
         output_fh.write("\n")
@@ -825,7 +852,7 @@ class RegXMLObject(AbstractParentObject):
             tmpel1.text = self.command_line
             tmpel0.append(tmpel1)
 
-            #TODO Note libraries used at run-time.
+            # TODO Note libraries used at run-time.
 
             outel.append(tmpel0)
 
@@ -854,30 +881,29 @@ class RegXMLObject(AbstractParentObject):
 
 
 class ByteRun(AbstractObject):
-
     _class_properties: typing.List[str] = [
-      "img_offset",
-      "fs_offset",
-      "file_offset",
-      "fill",
-      "len",
-      "md5",
-      "sha1",
-      "sha224",
-      "sha256",
-      "sha384",
-      "sha512",
-      "type",
-      "uncompressed_len"
+        "img_offset",
+        "fs_offset",
+        "file_offset",
+        "fill",
+        "len",
+        "md5",
+        "sha1",
+        "sha224",
+        "sha256",
+        "sha384",
+        "sha512",
+        "type",
+        "uncompressed_len",
     ]
 
-    _hash_properties : typing.List[str] = [
-      "md5",
-      "sha1",
-      "sha224",
-      "sha256",
-      "sha384",
-      "sha512"
+    _hash_properties: typing.List[str] = [
+        "md5",
+        "sha1",
+        "sha224",
+        "sha256",
+        "sha384",
+        "sha512",
     ]
 
     def __init__(self, *args, **kwargs) -> None:
@@ -904,7 +930,7 @@ class ByteRun(AbstractObject):
         if not self.uncompressed_len is None or not other.uncompressed_len is None:
             return None
 
-        #Don't glom runs with hashes
+        # Don't glom runs with hashes
         if self.has_hash_property or other.has_hash_property:
             return None
 
@@ -937,7 +963,7 @@ class ByteRun(AbstractObject):
             return retval
         return None
 
-    def __eq__(self, other : object) -> bool:
+    def __eq__(self, other: object) -> bool:
         # Check type.
         if other is None:
             return False
@@ -945,24 +971,28 @@ class ByteRun(AbstractObject):
         if not isinstance(other, ByteRun):
             return False
 
-        #TODO Determine a way to set an ignore flag for comparison of byte run hashes.  Maybe byte_run/@has_hash_property, as a virtual XPath reference?
-        #Check hashes
+        # TODO Determine a way to set an ignore flag for comparison of byte run hashes.  Maybe byte_run/@has_hash_property, as a virtual XPath reference?
+        # Check hashes
         if self.has_hash_property or other.has_hash_property:
             for hash_name in ByteRun._hash_properties:
-                if getattr(self, hash_name) is None or getattr(other, hash_name) is None:
+                if (
+                    getattr(self, hash_name) is None
+                    or getattr(other, hash_name) is None
+                ):
                     continue
                 if getattr(self, hash_name) != getattr(other, hash_name):
                     return False
 
         # Check values.
-        return \
-          self.img_offset == other.img_offset and \
-          self.fs_offset == other.fs_offset and \
-          self.file_offset == other.file_offset and \
-          self.fill == other.fill and \
-          self.len == other.len and \
-          self.type == other.type and \
-          self.uncompressed_len == other.uncompressed_len
+        return (
+            self.img_offset == other.img_offset
+            and self.fs_offset == other.fs_offset
+            and self.file_offset == other.file_offset
+            and self.fill == other.fill
+            and self.len == other.len
+            and self.type == other.type
+            and self.uncompressed_len == other.uncompressed_len
+        )
 
     def __repr__(self):
         parts = []
@@ -995,12 +1025,15 @@ class ByteRun(AbstractObject):
         for prop in copied_attrib:
             if prop not in _warned_byterun_attribs:
                 _warned_byterun_attribs.add(prop)
-                _logger.warning("No instructions present for processing this attribute found on a byte run: %r." % prop)
+                _logger.warning(
+                    "No instructions present for processing this attribute found on a byte run: %r."
+                    % prop
+                )
 
         # Look through direct-child elements for other properties.
         for ce in e.findall("./*"):
             (cns, ctn) = _qsplit(ce.tag)
-            #_logger.debug("Populating from child element: %r." % ce.tag)
+            # _logger.debug("Populating from child element: %r." % ce.tag)
             if ctn == "hashdigest":
                 type_lower = ce.attrib["type"].lower()
                 if type_lower in ByteRun._hash_properties:
@@ -1008,16 +1041,22 @@ class ByteRun(AbstractObject):
                 else:
                     if (type_lower, ByteRun) not in _warned_hashes:
                         _warned_hashes.add((type_lower, ByteRun))
-                        _logger.warning("Uncertain what to do with this hash encountered in a ByteRun: %r." % type_lower)
+                        _logger.warning(
+                            "Uncertain what to do with this hash encountered in a ByteRun: %r."
+                            % type_lower
+                        )
             else:
                 if (cns, ctn, ByteRun) not in _warned_elements:
                     _warned_elements.add((cns, ctn, ByteRun))
-                    _logger.warning("Uncertain what to do with this element in a ByteRun: %r" % ce)
+                    _logger.warning(
+                        "Uncertain what to do with this element in a ByteRun: %r" % ce
+                    )
 
     def to_Element(self):
         outel = ET.Element("byte_run")
 
         if self.has_hash_property:
+
             def _append_hash(name):
                 value = getattr(self, name)
                 if not value is None:
@@ -1036,7 +1075,7 @@ class ByteRun(AbstractObject):
             if val is None:
                 continue
 
-            #Hash properties become child elements - handled in sort order.
+            # Hash properties become child elements - handled in sort order.
             if prop in ByteRun._hash_properties:
                 continue
 
@@ -1070,10 +1109,12 @@ class ByteRun(AbstractObject):
         if val is None:
             self._fill = val
         elif val == "0":
-            self._fill = b'\x00'
+            self._fill = b"\x00"
         elif isinstance(val, bytes):
             if len(val) != 1:
-                raise NotImplementedError("Received a %d-length fill byte string for a byte run.  Only 1-byte fill strings are accepted for now, pending further discussion.")
+                raise NotImplementedError(
+                    "Received a %d-length fill byte string for a byte run.  Only 1-byte fill strings are accepted for now, pending further discussion."
+                )
             self._fill = val
         elif isinstance(val, int):
             # This is the easiest way between Python 2 and 3.  int.to_bytes would be better, but that is only in >=3.2.
@@ -1195,6 +1236,7 @@ class ByteRuns(AbstractObject):
     """
     A list-like object for ByteRun objects.
     """
+
     # Must define these methods to adhere to the list protocol:
     # __len__
     # __getitem__
@@ -1210,14 +1252,14 @@ class ByteRuns(AbstractObject):
     _facet_values = [None, "data", "inode", "name"]
 
     def __init__(
-      self,
-      run_list : typing.Optional[typing.List[ByteRun]] = None,
-      *args,
-      facet : typing.Optional[str] = None,
-      **kwargs
+        self,
+        run_list: typing.Optional[typing.List[ByteRun]] = None,
+        *args,
+        facet: typing.Optional[str] = None,
+        **kwargs,
     ) -> None:
         self._facet = facet
-        self._listdata : typing.List[ByteRun] = []
+        self._listdata: typing.List[ByteRun] = []
         self._listdata = []
         if isinstance(run_list, list):
             for run in run_list:
@@ -1228,7 +1270,7 @@ class ByteRuns(AbstractObject):
     def __delitem__(self, key):
         del self._listdata[key]
 
-    def __eq__(self, other : object) -> bool:
+    def __eq__(self, other: object) -> bool:
         """Compares the byte run lists and the facet (allowing a null facet to match "data")."""
         # Check type.
         if other is None:
@@ -1241,14 +1283,14 @@ class ByteRuns(AbstractObject):
             if set([self.facet, other.facet]) != set([None, "data"]):
                 return False
         if len(self) != len(other):
-            #_logger.debug("len(self) = %d" % len(self))
-            #_logger.debug("len(other) = %d" % len(other))
+            # _logger.debug("len(self) = %d" % len(self))
+            # _logger.debug("len(other) = %d" % len(other))
             return False
-        for (sbr_index, sbr) in enumerate(self):
+        for sbr_index, sbr in enumerate(self):
             obr = other[sbr_index]
-            #_logger.debug("sbr_index = %d" % sbr_index)
-            #_logger.debug("sbr = %r" % sbr)
-            #_logger.debug("obr = %r" % obr)
+            # _logger.debug("sbr_index = %d" % sbr_index)
+            # _logger.debug("sbr = %r" % sbr)
+            # _logger.debug("obr = %r" % obr)
             if sbr != obr:
                 return False
         return True
@@ -1275,20 +1317,14 @@ class ByteRuns(AbstractObject):
         _typecheck(value, ByteRun)
         self._listdata[key] = value
 
-    def append(
-      self,
-      value : ByteRun
-    ) -> None:
+    def append(self, value: ByteRun) -> None:
         """
         Appends a ByteRun object to this container's list.
         """
         _typecheck(value, ByteRun)
         self._listdata.append(value)
 
-    def glom(
-      self,
-      value : ByteRun
-    ) -> None:
+    def glom(self, value: ByteRun) -> None:
         """
         Appends a ByteRun object to this container's list, after attempting to join the run with the last run already stored.
         """
@@ -1303,14 +1339,19 @@ class ByteRuns(AbstractObject):
             else:
                 self._listdata[-1] = maybe_new_run
 
-    def iter_contents(self, raw_image, buffer_size=1048576, sector_size=512, errlog=None, statlog=None):
+    def iter_contents(
+        self, raw_image, buffer_size=1048576, sector_size=512, errlog=None, statlog=None
+    ):
         """
         Generator.  Yields contents, as byte strings one block at a time, given a backing raw image path.  Relies on The SleuthKit's img_cat, so contents can be extracted from any disk image type that TSK supports.
         @param buffer_size The maximum size of the byte strings yielded.
         @param sector_size The size of a disk sector in the raw image.  Required by img_cat.
         """
         if not isinstance(raw_image, str):
-            raise TypeError("iter_contents needs the string path to the image file.  Received: %r." % raw_image)
+            raise TypeError(
+                "iter_contents needs the string path to the image file.  Received: %r."
+                % raw_image
+            )
 
         stderr_fh = None
         if not errlog is None:
@@ -1326,7 +1367,9 @@ class ByteRuns(AbstractObject):
         try:
             for run in self:
                 if run.len is None:
-                    raise AttributeError("Byte runs can't be extracted if a run length is undefined.")
+                    raise AttributeError(
+                        "Byte runs can't be extracted if a run length is undefined."
+                    )
 
                 len_to_read = run.len
 
@@ -1334,28 +1377,30 @@ class ByteRuns(AbstractObject):
                 if not run.fill is None and len(run.fill) > 0:
                     while len_to_read > 0:
                         # This multiplication and slice should handle multi-byte fill characters, in case that ever comes up.
-                        yield (run.fill * buffer_size)[ : min(len_to_read, buffer_size)]
+                        yield (run.fill * buffer_size)[: min(len_to_read, buffer_size)]
                         len_to_read -= buffer_size
                     # Next byte run.
                     continue
 
                 if run.img_offset is None:
-                    raise AttributeError("Byte runs can't be extracted if missing a fill character and image offset.")
+                    raise AttributeError(
+                        "Byte runs can't be extracted if missing a fill character and image offset."
+                    )
 
                 cmd = ["img_cat"]
                 cmd.append("-b")
                 cmd.append(str(sector_size))
                 cmd.append("-s")
-                cmd.append(str(run.img_offset//sector_size))
+                cmd.append(str(run.img_offset // sector_size))
                 cmd.append("-e")
-                cmd.append(str( (run.img_offset + run.len)//sector_size))
+                cmd.append(str((run.img_offset + run.len) // sector_size))
                 cmd.append(raw_image)
                 p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=stderr_fh)
 
                 # Do the buffered read.
                 while len_to_read > 0:
                     buffer_data = p.stdout.read(buffer_size)
-                    yield_data = buffer_data[ : min(len_to_read, buffer_size)]
+                    yield_data = buffer_data[: min(len_to_read, buffer_size)]
                     if len(yield_data) > 0:
                         yield yield_data
                     else:
@@ -1363,7 +1408,9 @@ class ByteRuns(AbstractObject):
                         p.wait()
                         last_status = p.returncode
                         if last_status != 0:
-                            raise subprocess.CalledProcessError(last_status, " ".join(cmd), "img_cat failed.")
+                            raise subprocess.CalledProcessError(
+                                last_status, " ".join(cmd), "img_cat failed."
+                            )
                     len_to_read -= buffer_size
         except Exception as e:
             # Cleanup in an exception.
@@ -1423,7 +1470,10 @@ class ByteRuns(AbstractObject):
         if not val is None:
             _typecheck(val, str)
         if val not in ByteRuns._facet_values:
-            raise ValueError("A ByteRuns facet must be one of these: %r.  Received: %r." % (ByteRuns._facet_values, val))
+            raise ValueError(
+                "A ByteRuns facet must be one of these: %r.  Received: %r."
+                % (ByteRuns._facet_values, val)
+            )
         self._facet = val
 
 
@@ -1432,74 +1482,65 @@ class AbstractGeometricObject(AbstractObject):
     This class is an abstract superclass of all *Object classes that have a .byte_runs property.
     """
 
-    _class_properties: typing.List[str] = [
-      "byte_runs"
-    ]
+    _class_properties: typing.List[str] = ["byte_runs"]
 
     def __init__(
-      self,
-      *args,
-      byte_runs : typing.Optional[ByteRuns] = None,
-      **kwargs
+        self, *args, byte_runs: typing.Optional[ByteRuns] = None, **kwargs
     ) -> None:
         self._byte_runs = byte_runs
         super().__init__(*args, **kwargs)
 
     @property
-    def byte_runs(
-      self
-    ) -> typing.Optional[ByteRuns]:
+    def byte_runs(self) -> typing.Optional[ByteRuns]:
         return self._byte_runs
 
     @byte_runs.setter
-    def byte_runs(
-      self,
-      val : typing.Optional[ByteRuns]
-    ) -> None:
+    def byte_runs(self, val: typing.Optional[ByteRuns]) -> None:
         if not val is None:
             _typecheck(val, ByteRuns)
         self._byte_runs = val
 
 
-class DiskImageObject(AbstractParentObject, AbstractChildObject, AbstractGeometricObject):
-
+class DiskImageObject(
+    AbstractParentObject, AbstractChildObject, AbstractGeometricObject
+):
     _class_properties: typing.List[str] = [
-      "child_objects",
-      "error",
-      "externals",
-      "files",
-      "filesize",
-      "md5",
-      "md6",
-      "partition_systems",
-      "sector_size",
-      "sha1",
-      "sha224",
-      "sha256",
-      "sha384",
-      "sha512",
-      "volumes"
+        "child_objects",
+        "error",
+        "externals",
+        "files",
+        "filesize",
+        "md5",
+        "md6",
+        "partition_systems",
+        "sector_size",
+        "sha1",
+        "sha224",
+        "sha256",
+        "sha384",
+        "sha512",
+        "volumes",
     ]
 
     _hash_properties: typing.Set[str] = {
-      "md5",
-      "md6",
-      "sha1",
-      "sha224",
-      "sha256",
-      "sha384",
-      "sha512"
+        "md5",
+        "md6",
+        "sha1",
+        "sha224",
+        "sha256",
+        "sha384",
+        "sha512",
     }
 
     def __init__(self, *args, **kwargs) -> None:
         self.externals = kwargs.get("externals", OtherNSElementList())
 
         self._error = None
-        self._files : typing.List[FileObject] = []
+        self._files: typing.List[FileObject] = []
         self._filesize: typing.Optional[int] = None
-        self._partition_systems : typing.List[PartitionSystemObject] = []
+        self._partition_systems: typing.List[PartitionSystemObject] = []
         self._sector_size = None
-        self._volumes : typing.List[VolumeObject] = []
+        self._volumes: typing.List[VolumeObject] = []
 
         self._md5: typing.Optional[str] = None
         self._md6: typing.Optional[str] = None
@@ -1523,11 +1564,11 @@ class DiskImageObject(AbstractParentObject, AbstractChildObject, AbstractGeometr
         parts = []
         for prop in DiskImageObject._class_properties:
             if prop in {
-              "child_objects",
-              "externals",
-              "files",
-              "partition_systems",
-              "volumes"
+                "child_objects",
+                "externals",
+                "files",
+                "partition_systems",
+                "volumes",
             }:
                 continue
             val = getattr(self, prop)
@@ -1535,10 +1576,7 @@ class DiskImageObject(AbstractParentObject, AbstractChildObject, AbstractGeometr
                 parts.append("%s=%s" % (prop, val))
         return "DiskImageObject(" + ", ".join(parts) + ")"
 
-    def append(
-      self,
-      value : AbstractChildObject
-    ) -> None:
+    def append(self, value: AbstractChildObject) -> None:
         _typecheck(value, (PartitionSystemObject, VolumeObject, FileObject))
         if isinstance(value, PartitionSystemObject):
             self.partition_systems.append(value)
@@ -1561,15 +1599,19 @@ class DiskImageObject(AbstractParentObject, AbstractChildObject, AbstractGeometr
         errorel = None
         if not (self.error is None or self.error == ""):
             if len(diskimage_element) == 0:
-                raise ValueError("Inconsistent serialization state: Partial disk image XML element has no child elements, but at least the 'error' object property was set.")
+                raise ValueError(
+                    "Inconsistent serialization state: Partial disk image XML element has no child elements, but at least the 'error' object property was set."
+                )
             if _qsplit(diskimage_element[-1].tag)[1] == "error":
                 # (ET.Element does not have pop().)
                 errorel = diskimage_element[-1]
-                del(diskimage_element[-1])
+                del diskimage_element[-1]
             else:
                 # This branch of code should only be reached in unit testing, as it depends on the output of self.to_partial_Element.
                 if diskimage_element.find("error"):
-                    raise ValueError("Inconsistent serialization state: Partial disk image XML element has an immediate child named 'error', but not as the last child as expected from the schema.")
+                    raise ValueError(
+                        "Inconsistent serialization state: Partial disk image XML element has an immediate child named 'error', but not as the last child as expected from the schema."
+                    )
         if not errorel is None:
             retval.append(errorel)
 
@@ -1594,7 +1636,9 @@ class DiskImageObject(AbstractParentObject, AbstractChildObject, AbstractGeometr
                 continue
             elif ctn == "hashdigest":
                 if "type" not in ce.attrib:
-                    raise AttributeError("Attribute 'type' not found.  Every hashdigest element should have a 'type' attribute to identify the hash type.")
+                    raise AttributeError(
+                        "Attribute 'type' not found.  Every hashdigest element should have a 'type' attribute to identify the hash type."
+                    )
                 hash_type = ce.attrib["type"].lower()
                 if not hash_type in DiskImageObject._hash_properties:
                     raise ValueError("Unexpected hashdigest type: %r." % hash_type)
@@ -1604,13 +1648,15 @@ class DiskImageObject(AbstractParentObject, AbstractChildObject, AbstractGeometr
             else:
                 if (cns, ctn, DiskImageObject) not in _warned_elements:
                     _warned_elements.add((cns, ctn, DiskImageObject))
-                    _logger.warning("Unsure what to do with this element in a DiskImageObject: %r" % ce)
+                    _logger.warning(
+                        "Unsure what to do with this element in a DiskImageObject: %r"
+                        % ce
+                    )
 
     def print_dfxml(self, output_fh=sys.stdout):
         pe = self.to_partial_Element()
 
-        if len(pe) == 0 \
-          and len(self.child_objects) == 0:
+        if len(pe) == 0 and len(self.child_objects) == 0:
             dfxml_wrapper = _ET_tostring(pe)
             output_fh.write(dfxml_wrapper)
             return
@@ -1628,17 +1674,22 @@ class DiskImageObject(AbstractParentObject, AbstractChildObject, AbstractGeometr
             replaced_dfxml_wrapper = dfxml_wrapper.replace(" />", ">")
             dfxml_head = replaced_dfxml_wrapper
         else:
-            dfxml_head = dfxml_wrapper.strip()[:-len(dfxml_foot)]
+            dfxml_head = dfxml_wrapper.strip()[: -len(dfxml_foot)]
 
         output_fh.write(dfxml_head)
         output_fh.write("\n")
 
-        _logger.debug("Writing %d partition system objects for this disk image." % len(self.partition_systems))
+        _logger.debug(
+            "Writing %d partition system objects for this disk image."
+            % len(self.partition_systems)
+        )
         for ps in self.partition_systems:
             ps.print_dfxml(output_fh)
             output_fh.write("\n")
 
-        _logger.debug("Writing %d volume objects for this disk image." % len(self.volumes))
+        _logger.debug(
+            "Writing %d volume objects for this disk image." % len(self.volumes)
+        )
         for v in self.volumes:
             v.print_dfxml(output_fh)
             output_fh.write("\n")
@@ -1661,11 +1712,7 @@ class DiskImageObject(AbstractParentObject, AbstractChildObject, AbstractGeometr
         poststream_elements = self.pop_poststream_elements(outel)
 
         # List children grouped by type, in order per DFXML schema.
-        for child_list in [
-          self.partition_systems,
-          self.volumes,
-          self.files
-        ]:
+        for child_list in [self.partition_systems, self.volumes, self.files]:
             for obj in child_list:
                 tmpel = obj.to_Element()
                 outel.append(tmpel)
@@ -1699,9 +1746,7 @@ class DiskImageObject(AbstractParentObject, AbstractChildObject, AbstractGeometr
             value = getattr(self, prop)
             _append_el(prop, value)
 
-        for prop in [
-          "filesize"
-        ]:
+        for prop in ["filesize"]:
             _append_str(prop)
 
         if self.byte_runs:
@@ -1710,10 +1755,7 @@ class DiskImageObject(AbstractParentObject, AbstractChildObject, AbstractGeometr
         for prop in DiskImageObject._hash_properties:
             _append_hash(prop, getattr(self, prop))
 
-        for prop in [
-          "sector_size",
-          "error"
-        ]:
+        for prop in ["sector_size", "error"]:
             _append_str(prop)
 
         return outel
@@ -1814,32 +1856,33 @@ class DiskImageObject(AbstractParentObject, AbstractChildObject, AbstractGeometr
         return self._volumes
 
 
-class PartitionSystemObject(AbstractParentObject, AbstractChildObject, AbstractGeometricObject):
-
+class PartitionSystemObject(
+    AbstractParentObject, AbstractChildObject, AbstractGeometricObject
+):
     _class_properties: typing.List[str] = [
-      "block_size",
-      "child_objects",
-      "error",
-      "externals",
-      "files",
-      "guid",
-      "partitions",
-      "pstype_str",
-      "volume_name"
+        "block_size",
+        "child_objects",
+        "error",
+        "externals",
+        "files",
+        "guid",
+        "partitions",
+        "pstype_str",
+        "volume_name",
     ]
 
     def __init__(self, *args, **kwargs) -> None:
         self.externals = kwargs.get("externals", OtherNSElementList())
 
         self._error = None
-        self._files : typing.List[FileObject] = []
-        self._partitions : typing.List[PartitionObject] = []
+        self._files: typing.List[FileObject] = []
+        self._partitions: typing.List[PartitionObject] = []
         self._pstype_str = None
 
-        #TODO Make @property methods once properties listed in DFXML schema.
+        # TODO Make @property methods once properties listed in DFXML schema.
         self.block_size = None
         self.guid = None
-        self.volume_name = None # (This might only appear on Solaris disklabels that are directly nested in a partition.)
+        self.volume_name = None  # (This might only appear on Solaris disklabels that are directly nested in a partition.)
 
         super().__init__(*args, **kwargs)
 
@@ -1854,22 +1897,14 @@ class PartitionSystemObject(AbstractParentObject, AbstractChildObject, AbstractG
     def __repr__(self):
         parts = []
         for prop in PartitionSystemObject._class_properties:
-            if prop in {
-              "child_objects",
-              "externals",
-              "files",
-              "partitions"
-            }:
+            if prop in {"child_objects", "externals", "files", "partitions"}:
                 continue
             val = getattr(self, prop)
             if val:
                 parts.append("%s=%s" % (prop, val))
         return "PartitionSystemObject(" + ", ".join(parts) + ")"
 
-    def append(
-      self,
-      value : AbstractChildObject
-    ) -> None:
+    def append(self, value: AbstractChildObject) -> None:
         """
         Note that files appended directly to a PartitionSystemObject are expected to be slack space discoveries.  A warning is raised if an allocated file is appended.
         """
@@ -1878,7 +1913,9 @@ class PartitionSystemObject(AbstractParentObject, AbstractChildObject, AbstractG
             self.partitions.append(value)
         elif isinstance(value, FileObject):
             if value.is_allocated():
-                warnings.warn("A partition system has had an 'allocated' file appended directly to it.  This list of files is expected to be slack space discoveries.")
+                warnings.warn(
+                    "A partition system has had an 'allocated' file appended directly to it.  This list of files is expected to be slack space discoveries."
+                )
             self.files.append(value)
         super().append(value)
 
@@ -1907,7 +1944,10 @@ class PartitionSystemObject(AbstractParentObject, AbstractChildObject, AbstractG
             else:
                 if (cns, ctn, PartitionSystemObject) not in _warned_elements:
                     _warned_elements.add((cns, ctn, PartitionSystemObject))
-                    _logger.warning("Unsure what to do with this element in a PartitionSystemObject: %r" % ce)
+                    _logger.warning(
+                        "Unsure what to do with this element in a PartitionSystemObject: %r"
+                        % ce
+                    )
 
     def pop_poststream_elements(self, partitionsystem_element):
         """
@@ -1924,15 +1964,19 @@ class PartitionSystemObject(AbstractParentObject, AbstractChildObject, AbstractG
         errorel = None
         if not (self.error is None or self.error == ""):
             if len(partitionsystem_element) == 0:
-                raise ValueError("Inconsistent serialization state: Partial partitionsystem XML element has no child elements, but at least the 'error' object property was set.")
+                raise ValueError(
+                    "Inconsistent serialization state: Partial partitionsystem XML element has no child elements, but at least the 'error' object property was set."
+                )
             if _qsplit(partitionsystem_element[-1].tag)[1] == "error":
                 # (ET.Element does not have pop().)
                 errorel = partitionsystem_element[-1]
-                del(partitionsystem_element[-1])
+                del partitionsystem_element[-1]
             else:
                 # This branch of code should only be reached in unit testing, as it depends on the output of self.to_partial_Element.
                 if partitionsystem_element.find("error"):
-                    raise ValueError("Inconsistent serialization state: Partial partitionsystem XML element has an immediate child named 'error', but not as the last child as expected from the schema.")
+                    raise ValueError(
+                        "Inconsistent serialization state: Partial partitionsystem XML element has an immediate child named 'error', but not as the last child as expected from the schema."
+                    )
         if not errorel is None:
             retval.append(errorel)
 
@@ -1941,8 +1985,7 @@ class PartitionSystemObject(AbstractParentObject, AbstractChildObject, AbstractG
     def print_dfxml(self, output_fh=sys.stdout):
         pe = self.to_partial_Element()
 
-        if len(pe) == 0 \
-          and len(self.child_objects) == 0:
+        if len(pe) == 0 and len(self.child_objects) == 0:
             dfxml_wrapper = _ET_tostring(pe)
             output_fh.write(dfxml_wrapper)
             return
@@ -1960,15 +2003,20 @@ class PartitionSystemObject(AbstractParentObject, AbstractChildObject, AbstractG
             replaced_dfxml_wrapper = dfxml_wrapper.replace(" />", ">")
             dfxml_head = replaced_dfxml_wrapper
         else:
-            dfxml_head = dfxml_wrapper.strip()[:-len(dfxml_foot)]
+            dfxml_head = dfxml_wrapper.strip()[: -len(dfxml_foot)]
 
         output_fh.write(dfxml_head)
         output_fh.write("\n")
-        _logger.debug("Writing %d partition objects for this partition system." % len(self.partitions))
+        _logger.debug(
+            "Writing %d partition objects for this partition system."
+            % len(self.partitions)
+        )
         for p in self.partitions:
             p.print_dfxml(output_fh)
             output_fh.write("\n")
-        _logger.debug("Writing %d file objects for this partition system." % len(self.files))
+        _logger.debug(
+            "Writing %d file objects for this partition system." % len(self.files)
+        )
         for f in self.files:
             e = f.to_Element()
             output_fh.write(_ET_tostring(e))
@@ -1986,10 +2034,7 @@ class PartitionSystemObject(AbstractParentObject, AbstractChildObject, AbstractG
         poststream_elements = self.pop_poststream_elements(outel)
 
         # List children grouped by type, in order per DFXML schema.
-        for child_list in [
-          self.partitions,
-          self.files
-        ]:
+        for child_list in [self.partitions, self.files]:
             for obj in child_list:
                 tmpel = obj.to_Element()
                 outel.append(tmpel)
@@ -2004,10 +2049,7 @@ class PartitionSystemObject(AbstractParentObject, AbstractChildObject, AbstractG
         outel = ET.Element("partitionsystemobject")
 
         def _append_el(prop, value):
-            if prop in {
-              "error",
-              "pstype_str"
-            }:
+            if prop in {"error", "pstype_str"}:
                 tag = prop
             else:
                 tag = "dfxmlext:" + prop
@@ -2024,11 +2066,7 @@ class PartitionSystemObject(AbstractParentObject, AbstractChildObject, AbstractG
             _append_el(prop, value)
 
         # Add not-yet-standardized properties before standardized elements.
-        for prop in [
-          "block_size",
-          "volume_name",
-          "guid"
-        ]:
+        for prop in ["block_size", "volume_name", "guid"]:
             _append_str(prop)
 
         for e in self.externals:
@@ -2037,10 +2075,7 @@ class PartitionSystemObject(AbstractParentObject, AbstractChildObject, AbstractG
         if self.byte_runs:
             outel.append(self.byte_runs.to_Element())
 
-        for prop in [
-          "pstype_str",
-          "error"
-        ]:
+        for prop in ["pstype_str", "error"]:
             _append_str(prop)
 
         return outel
@@ -2083,44 +2118,45 @@ class PartitionSystemObject(AbstractParentObject, AbstractChildObject, AbstractG
         self._pstype_str = _strcast(val)
 
 
-class PartitionObject(AbstractParentObject, AbstractChildObject, AbstractGeometricObject):
-
+class PartitionObject(
+    AbstractParentObject, AbstractChildObject, AbstractGeometricObject
+):
     _class_properties: typing.List[str] = [
-      "block_count",
-      "block_size",
-      "child_objects",
-      "externals",
-      "files",
-      "ftype_str",
-      "guid",
-      "partition_index",
-      "partition_label",
-      "partition_system_offset",
-      "partition_systems",
-      "partitions",
-      "ptype",
-      "ptype_str",
-      "volumes"
+        "block_count",
+        "block_size",
+        "child_objects",
+        "externals",
+        "files",
+        "ftype_str",
+        "guid",
+        "partition_index",
+        "partition_label",
+        "partition_system_offset",
+        "partition_systems",
+        "partitions",
+        "ptype",
+        "ptype_str",
+        "volumes",
     ]
 
     def __init__(self, *args, **kwargs) -> None:
         self.externals = kwargs.get("externals", OtherNSElementList())
 
-        self._files : typing.List[FileObject] = []
+        self._files: typing.List[FileObject] = []
         self._partition_index = None
-        self._partition_systems : typing.List[PartitionSystemObject] = []
-        self._partitions : typing.List[PartitionObject] = []
-        self._volumes : typing.List[VolumeObject] = []
+        self._partition_systems: typing.List[PartitionSystemObject] = []
+        self._partitions: typing.List[PartitionObject] = []
+        self._volumes: typing.List[VolumeObject] = []
         self._ptype = None
         self._ptype_str = None
 
-        #TODO Make @property methods once properties listed in DFXML schema.
+        # TODO Make @property methods once properties listed in DFXML schema.
         self.block_count = None
         self.block_size = None
         self.ftype_str = None
         self.guid = None
         self.partition_label = None
-        self.partition_system_offset = None # Unit: bytes.  Offset within partition system.  Could also be byte_run/@ps_offset, if that were defined in the ByteRun class.
+        self.partition_system_offset = None  # Unit: bytes.  Offset within partition system.  Could also be byte_run/@ps_offset, if that were defined in the ByteRun class.
 
         super().__init__(*args, **kwargs)
 
@@ -2136,12 +2172,12 @@ class PartitionObject(AbstractParentObject, AbstractChildObject, AbstractGeometr
         parts = []
         for prop in PartitionObject._class_properties:
             if prop in {
-              "child_objects",
-              "externals",
-              "files",
-              "partition_systems",
-              "partitions",
-              "volumes"
+                "child_objects",
+                "externals",
+                "files",
+                "partition_systems",
+                "partitions",
+                "volumes",
             }:
                 continue
             val = getattr(self, prop)
@@ -2149,14 +2185,13 @@ class PartitionObject(AbstractParentObject, AbstractChildObject, AbstractGeometr
                 parts.append("%s=%s" % (prop, val))
         return "PartitionObject(" + ", ".join(parts) + ")"
 
-    def append(
-      self,
-      value : AbstractChildObject
-    ) -> None:
+    def append(self, value: AbstractChildObject) -> None:
         """
         Note that files appended directly to a PartitionObject are expected to be slack space discoveries.  A warning is raised if an allocated file is appended.
         """
-        _typecheck(value, (PartitionSystemObject, PartitionObject, VolumeObject, FileObject))
+        _typecheck(
+            value, (PartitionSystemObject, PartitionObject, VolumeObject, FileObject)
+        )
         if isinstance(value, PartitionSystemObject):
             self.partition_systems.append(value)
         elif isinstance(value, PartitionObject):
@@ -2165,7 +2200,9 @@ class PartitionObject(AbstractParentObject, AbstractChildObject, AbstractGeometr
             self.volumes.append(value)
         elif isinstance(value, FileObject):
             if value.is_allocated():
-                warnings.warn("A partition has had an 'allocated' file appended directly to it.  This list of files is expected to be slack space discoveries.")
+                warnings.warn(
+                    "A partition has had an 'allocated' file appended directly to it.  This list of files is expected to be slack space discoveries."
+                )
             self.files.append(value)
         super().append(value)
 
@@ -2194,14 +2231,16 @@ class PartitionObject(AbstractParentObject, AbstractChildObject, AbstractGeometr
             else:
                 if (cns, ctn, PartitionObject) not in _warned_elements:
                     _warned_elements.add((cns, ctn, PartitionObject))
-                    _logger.warning("Unsure what to do with this element in a PartitionObject: %r" % ce)
+                    _logger.warning(
+                        "Unsure what to do with this element in a PartitionObject: %r"
+                        % ce
+                    )
 
     def print_dfxml(self, output_fh=sys.stdout):
         pe = self.to_partial_Element()
         dfxml_wrapper = _ET_tostring(pe)
 
-        if len(pe) == 0 \
-          and len(self.child_objects) == 0:
+        if len(pe) == 0 and len(self.child_objects) == 0:
             output_fh.write(dfxml_wrapper)
             return
 
@@ -2212,22 +2251,29 @@ class PartitionObject(AbstractParentObject, AbstractChildObject, AbstractGeometr
             replaced_dfxml_wrapper = dfxml_wrapper.replace(" />", ">")
             dfxml_head = replaced_dfxml_wrapper
         else:
-            dfxml_head = dfxml_wrapper.strip()[:-len(dfxml_foot)]
+            dfxml_head = dfxml_wrapper.strip()[: -len(dfxml_foot)]
 
         output_fh.write(dfxml_head)
         output_fh.write("\n")
 
-        _logger.debug("Writing %d partition system objects for this partition." % len(self.partition_systems))
+        _logger.debug(
+            "Writing %d partition system objects for this partition."
+            % len(self.partition_systems)
+        )
         for ps in self.partition_systems:
             ps.print_dfxml(output_fh)
             output_fh.write("\n")
 
-        _logger.debug("Writing %d partition objects for this partition." % len(self.partitions))
+        _logger.debug(
+            "Writing %d partition objects for this partition." % len(self.partitions)
+        )
         for p in self.partitions:
             p.print_dfxml(output_fh)
             output_fh.write("\n")
 
-        _logger.debug("Writing %d volume objects for this partition." % len(self.volumes))
+        _logger.debug(
+            "Writing %d volume objects for this partition." % len(self.volumes)
+        )
         for v in self.volumes:
             v.print_dfxml(output_fh)
             output_fh.write("\n")
@@ -2244,10 +2290,10 @@ class PartitionObject(AbstractParentObject, AbstractChildObject, AbstractGeometr
         outel = self.to_partial_Element()
         # List children grouped by type, in order per DFXML schema.
         for child_list in [
-          self.partition_systems,
-          self.partitions,
-          self.volumes,
-          self.files
+            self.partition_systems,
+            self.partitions,
+            self.volumes,
+            self.files,
         ]:
             for obj in child_list:
                 tmpel = obj.to_Element()
@@ -2258,11 +2304,7 @@ class PartitionObject(AbstractParentObject, AbstractChildObject, AbstractGeometr
         outel = ET.Element("partitionobject")
 
         def _append_el(prop, value):
-            if prop in {
-              "partition_index",
-              "ptype",
-              "ptype_str"
-            }:
+            if prop in {"partition_index", "ptype", "ptype_str"}:
                 tag = prop
             else:
                 tag = "dfxmlext:" + prop
@@ -2277,12 +2319,12 @@ class PartitionObject(AbstractParentObject, AbstractChildObject, AbstractGeometr
 
         # Add not-yet-standardized properties before standardized elements.
         for prop in [
-          "partition_label",
-          "partition_system_offset",
-          "block_size",
-          "ftype_str",
-          "block_count",
-          "guid"
+            "partition_label",
+            "partition_system_offset",
+            "block_size",
+            "ftype_str",
+            "block_count",
+            "guid",
         ]:
             _append_str(prop)
 
@@ -2293,9 +2335,9 @@ class PartitionObject(AbstractParentObject, AbstractChildObject, AbstractGeometr
             outel.append(self.byte_runs.to_Element())
 
         for prop in [
-          "partition_index",
-          "ptype",
-          "ptype_str",
+            "partition_index",
+            "ptype",
+            "ptype_str",
         ]:
             _append_str(prop)
 
@@ -2357,57 +2399,46 @@ class PartitionObject(AbstractParentObject, AbstractChildObject, AbstractGeometr
 
 
 class VolumeObject(AbstractParentObject, AbstractChildObject, AbstractGeometricObject):
-
     _class_properties: typing.List[str] = [
-      "annos",
-      "allocated_only",
-      "block_count",
-      "block_size",
-      "child_objects",
-      "disk_images",
-      "error",
-      "externals",
-      "files",
-      "first_block",
-      "ftype",
-      "ftype_str",
-      "last_block",
-      "partition_offset",
-      "original_volume",
-      "sector_size",
-      "volumes"
+        "annos",
+        "allocated_only",
+        "block_count",
+        "block_size",
+        "child_objects",
+        "disk_images",
+        "error",
+        "externals",
+        "files",
+        "first_block",
+        "ftype",
+        "ftype_str",
+        "last_block",
+        "partition_offset",
+        "original_volume",
+        "sector_size",
+        "volumes",
     ]
 
-    _diff_attr_names = {
-      "new":"delta:new_volume",
-      "deleted":"delta:deleted_volume",
-      "modified":"delta:modified_volume",
-      "matched":"delta:matched"
+    _diff_attr_names: typing.Dict[str, str] = {
+        "new": "{%s}new_volume" % dfxml.XMLNS_DELTA,
+        "deleted": "{%s}deleted_volume" % dfxml.XMLNS_DELTA,
+        "modified": "{%s}modified_volume" % dfxml.XMLNS_DELTA,
+        "matched": "{%s}matched" % dfxml.XMLNS_DELTA,
     }
 
-    #TODO There may be need in the future to compare the annotations as well.  It complicates make_differential_dfxml too much for now.
-    _incomparable_properties = set([
-      "annos",
-      "child_objects",
-      "volumes"
-    ])
+    # TODO There may be need in the future to compare the annotations as well.  It complicates make_differential_dfxml too much for now.
+    _incomparable_properties = set(["annos", "child_objects", "volumes"])
 
     def __init__(self, *args, **kwargs) -> None:
-        self._disk_images : typing.List[DiskImageObject] = []
-        self._files : typing.List[FileObject] = []
-        self._volumes : typing.List[VolumeObject] = []
+        self._disk_images: typing.List[DiskImageObject] = []
+        self._files: typing.List[FileObject] = []
+        self._volumes: typing.List[VolumeObject] = []
 
-        self._annos : typing.Set[str] = set()
-        self._diffs : typing.Set[str] = set()
+        self._annos: typing.Set[str] = set()
+        self._diffs: typing.Set[str] = set()
 
         for prop in VolumeObject._class_properties:
-            if prop in {
-              "annos",
-              "child_objects",
-              "disk_images",
-              "files",
-              "volumes"
-            }:
+            if prop in {"annos", "child_objects", "disk_images", "files", "volumes"}:
                 continue
             elif prop == "externals":
                 setattr(self, prop, kwargs.get(prop, OtherNSElementList()))
@@ -2428,22 +2459,14 @@ class VolumeObject(AbstractParentObject, AbstractChildObject, AbstractGeometricO
         parts = []
         for prop in VolumeObject._class_properties:
             # Skip outputting the files, file systems, and disk images lists.
-            if prop in {
-              "child_objects",
-              "disk_images",
-              "files",
-              "volumes"
-            }:
+            if prop in {"child_objects", "disk_images", "files", "volumes"}:
                 continue
             val = getattr(self, prop)
             if not val is None:
                 parts.append("%s=%r" % (prop, val))
         return "VolumeObject(" + ", ".join(parts) + ")"
 
-    def append(
-      self,
-      value : AbstractChildObject
-    ) -> None:
+    def append(self, value: AbstractChildObject) -> None:
         _typecheck(value, (DiskImageObject, FileObject, VolumeObject))
         if isinstance(value, DiskImageObject):
             self.disk_images.append(value)
@@ -2466,15 +2489,17 @@ class VolumeObject(AbstractParentObject, AbstractChildObject, AbstractGeometricO
             if ignore_original and prop == "original_volume":
                 continue
 
-            #_logger.debug("getattr(self, %r) = %r" % (prop, getattr(self, prop)))
-            #_logger.debug("getattr(other, %r) = %r" % (prop, getattr(other, prop)))
+            # _logger.debug("getattr(self, %r) = %r" % (prop, getattr(self, prop)))
+            # _logger.debug("getattr(other, %r) = %r" % (prop, getattr(other, prop)))
 
             # Allow file system type to be case-insensitive.
             if prop == "ftype_str":
                 o = getattr(other, prop)
-                if o: o = o.lower()
+                if o:
+                    o = o.lower()
                 s = getattr(self, prop)
-                if s: s = s.lower()
+                if s:
+                    s = s.lower()
                 if s != o:
                     diffs.add(prop)
             else:
@@ -2482,10 +2507,10 @@ class VolumeObject(AbstractParentObject, AbstractChildObject, AbstractGeometricO
                     diffs.add(prop)
         return diffs
 
-    def populate_from_Element(self, e):
+    def populate_from_Element(self, e: ET.Element) -> None:
         global _warned_elements
         _typecheck(e, (ET.Element, ET.ElementTree))
-        #_logger.debug("e = %r" % e)
+        # _logger.debug("e = %r" % e)
 
         # Read differential annotations.
         _read_differential_annotations(VolumeObject._diff_attr_names, e, self.annos)
@@ -2496,10 +2521,10 @@ class VolumeObject(AbstractParentObject, AbstractChildObject, AbstractGeometricO
 
         # Look through direct-child elements to populate object.
         for ce in e.findall("./*"):
-            #_logger.debug("ce = %r" % ce)
+            # _logger.debug("ce = %r" % ce)
             (cns, ctn) = _qsplit(ce.tag)
-            #_logger.debug("cns = %r" % cns)
-            #_logger.debug("ctn = %r" % ctn)
+            # _logger.debug("cns = %r" % cns)
+            # _logger.debug("ctn = %r" % ctn)
             if ctn == "byte_runs":
                 self.byte_runs = ByteRuns()
                 self.byte_runs.populate_from_Element(ce)
@@ -2520,18 +2545,23 @@ class VolumeObject(AbstractParentObject, AbstractChildObject, AbstractGeometricO
                 self.original_volume = VolumeObject()
                 self.original_volume.populate_from_Element(ce)
             elif ctn in VolumeObject._class_properties:
-                #_logger.debug("ce.text = %r" % ce.text)
+                # _logger.debug("ce.text = %r" % ce.text)
                 setattr(self, ctn, ce.text)
-                #_logger.debug("getattr(self, %r) = %r" % (ctn, getattr(self, ctn)))
+                # _logger.debug("getattr(self, %r) = %r" % (ctn, getattr(self, ctn)))
             elif cns not in [dfxml.XMLNS_DFXML, ""]:
                 # Put all non-DFXML-namespace elements into the externals list.
+                # _logger.debug("ce.tag = %r.", ce.tag)
                 self.externals.append(ce)
             else:
                 if (cns, ctn, VolumeObject) not in _warned_elements:
                     _warned_elements.add((cns, ctn, VolumeObject))
-                    _logger.warning("Unsure what to do with this element in a VolumeObject: %r" % ce)
+                    _logger.warning(
+                        "Unsure what to do with this element in a VolumeObject: %r" % ce
+                    )
 
-    def pop_poststream_elements(self, volume_element):
+    def pop_poststream_elements(
+        self, volume_element: ET.Element
+    ) -> typing.List[ET.Element]:
         """
         This function is a utility function for the two whole-object serialization methods, print_dfxml (to string) and to_Element (to ET.Element).
 
@@ -2539,32 +2569,44 @@ class VolumeObject(AbstractParentObject, AbstractChildObject, AbstractGeometricO
 
         Returns a list of child elements in DFXML Schema order.  List might be empty.
 
-        This subroutine implements a re-serialization implementation decision: elements in extension namespaces can appear at the beginning or end of the volume XML child list, per the DFXML Schema.  All of the externals are put into the beginning of the element in to_partial_Element.  Hence, error will be the last child.
+        This subroutine implements a re-serialization implementation decision: elements in extension namespaces can appear only at the end of the volume XML child list, per the DFXML Schema.  All of the externals are put into the end of the element in to_partial_Element.
         """
-        retval = []
+        retval: typing.List[ET.Element] = []
+        # _logger.debug("len(volume_element) = %d.", len(volume_element))
+
+        # Find all non-DFXML-namespaced elements by working from back of list of child elements, stopping when list is empty, or when a DFXML-namespaced element is encountered.
+        while len(volume_element) > 0:
+            # _logger.debug("volume_element[-1] = %s.", volume_element[-1])
+            # _logger.debug("volume_element[-1].tag = %s.", volume_element[-1].tag)
+            # _logger.debug("_qsplit(volume_element[-1].tag) = %s.", _qsplit(volume_element[-1].tag))
+            if _qsplit(volume_element[-1].tag)[0] in [None, dfxml.XMLNS_DFXML, ""]:
+                break
+            else:
+                # (ET.Element does not have pop().)
+                retval.insert(0, volume_element[-1])
+                del volume_element[-1]
 
         errorel = None
         if not (self.error is None or self.error == ""):
             if len(volume_element) == 0:
-                raise ValueError("Inconsistent serialization state: Partial volume XML element has no child elements, but at least the 'error' object property was set.")
+                raise ValueError(
+                    "Inconsistent serialization state: Partial volume XML element has no child elements, but at least the 'error' object property was set."
+                )
             if _qsplit(volume_element[-1].tag)[1] == "error":
                 # (ET.Element does not have pop().)
                 errorel = volume_element[-1]
-                del(volume_element[-1])
-            else:
-                # This branch of code should only be reached in unit testing, as it depends on the output of self.to_partial_Element.
-                if volume_element.find("error"):
-                    raise ValueError("Inconsistent serialization state: Partial volume XML element has an immediate child named 'error', but not as the last child as expected from the schema.")
+                del volume_element[-1]
         if not errorel is None:
-            retval.append(errorel)
+            retval.insert(0, errorel)
 
+        # _logger.debug("len(volume_element) = %d.", len(volume_element))
+        # _logger.debug("len(retval) = %d.", len(retval))
         return retval
 
     def print_dfxml(self, output_fh=sys.stdout):
         pe = self.to_partial_Element()
 
-        if len(pe) == 0 \
-          and len(self.child_objects) == 0:
+        if len(pe) == 0 and len(self.child_objects) == 0:
             dfxml_wrapper = _ET_tostring(pe)
             output_fh.write(dfxml_wrapper)
             return
@@ -2582,7 +2624,7 @@ class VolumeObject(AbstractParentObject, AbstractChildObject, AbstractGeometricO
             replaced_dfxml_wrapper = dfxml_wrapper.replace(" />", ">")
             dfxml_head = replaced_dfxml_wrapper
         else:
-            dfxml_head = dfxml_wrapper.strip()[:-len(dfxml_foot)]
+            dfxml_head = dfxml_wrapper.strip()[: -len(dfxml_foot)]
 
         output_fh.write(dfxml_head)
         output_fh.write("\n")
@@ -2607,17 +2649,13 @@ class VolumeObject(AbstractParentObject, AbstractChildObject, AbstractGeometricO
 
         output_fh.write("\n")
 
-    def to_Element(self):
+    def to_Element(self) -> ET.Element:
         outel = self.to_partial_Element()
 
         poststream_elements = self.pop_poststream_elements(outel)
 
         # List children grouped by type, in order per DFXML schema.
-        for child_list in [
-          self.disk_images,
-          self.volumes,
-          self.files
-        ]:
+        for child_list in [self.disk_images, self.volumes, self.files]:
             for obj in child_list:
                 tmpel = obj.to_Element()
                 outel.append(tmpel)
@@ -2628,7 +2666,7 @@ class VolumeObject(AbstractParentObject, AbstractChildObject, AbstractGeometricO
 
         return outel
 
-    def to_partial_Element(self):
+    def to_partial_Element(self) -> ET.Element:
         """Returns the volume element with its properties, except for the child fileobjects.  Properties are appended in DFXML schema order."""
         outel = ET.Element("volume")
 
@@ -2641,28 +2679,28 @@ class VolumeObject(AbstractParentObject, AbstractChildObject, AbstractGeometricO
                 outel.attrib[VolumeObject._diff_attr_names[annodiff]] = "1"
                 annos_whittle_set.remove(annodiff)
         if len(annos_whittle_set) > 0:
-            _logger.warning("Failed to export some differential annotations: %r." % annos_whittle_set)
-
-        for e in self.externals:
-            outel.append(e)
+            _logger.warning(
+                "Failed to export some differential annotations: %r."
+                % annos_whittle_set
+            )
 
         if self.byte_runs:
             outel.append(self.byte_runs.to_Element())
 
-        def _append_el(prop, value):
+        def _append_el(prop: str, value: typing.Any) -> None:
             tmpel = ET.Element(prop)
             _keep = False
             if not value is None:
                 tmpel.text = str(value)
                 _keep = True
             if prop in self.diffs:
-                tmpel.attrib["delta:changed_property"] = "1"
+                tmpel.attrib["{%s}changed_property" % dfxml.XMLNS_DELTA] = "1"
                 diffs_whittle_set.remove(prop)
                 _keep = True
             if _keep:
                 outel.append(tmpel)
 
-        def _append_str(prop):
+        def _append_str(prop: str) -> None:
             value = getattr(self, prop)
             _append_el(prop, value)
 
@@ -2673,40 +2711,45 @@ class VolumeObject(AbstractParentObject, AbstractChildObject, AbstractGeometricO
             _append_el(prop, value)
 
         for prop in [
-          "partition_offset",
-          "sector_size",
-          "block_size",
-          "ftype",
-          "ftype_str",
-          "block_count",
-          "first_block",
-          "last_block"
+            "partition_offset",
+            "sector_size",
+            "block_size",
+            "ftype",
+            "ftype_str",
+            "block_count",
+            "first_block",
+            "last_block",
         ]:
             _append_str(prop)
 
         # Output the one Boolean property.
         _append_bool("allocated_only")
 
+        # Output the error property (which will be popped and re-appended after the file list in to_Element).
+        _append_str("error")
+
         # Output the original volume's properties.
         if not self.original_volume is None or "original_volume" in diffs_whittle_set:
             # Skip FileObject list, if any.
             if self.original_volume is None:
-                tmpel = ET.Element("delta:original_volume")
+                tmpel = ET.Element("{%s}original_volume" % dfxml.XMLNS_DELTA)
             else:
                 tmpel = self.original_volume.to_partial_Element()
-                tmpel.tag = "delta:original_volume"
+                tmpel.tag = "{%s}original_volume" % dfxml.XMLNS_DELTA
 
             if "original_volume" in diffs_whittle_set:
-                tmpel.attrib["delta:changed_property"] = "1"
+                tmpel.attrib["{%s}changed_property" % dfxml.XMLNS_DELTA] = "1"
 
             outel.append(tmpel)
 
-        # Output the error property (which will be popped and re-appended after the file list in to_Element).
-        # The error should come last because of the two spots extended elements can be placed; this is to simplify the file-listing VolumeObject.to_Element() method.
-        _append_str("error")
+        for e in self.externals:
+            outel.append(e)
 
         if len(diffs_whittle_set) > 0:
-            _logger.warning("Did not annotate all of the differing properties of this volume.  Remaining properties:  %r." % diffs_whittle_set)
+            _logger.warning(
+                "Did not annotate all of the differing properties of this volume.  Remaining properties:  %r."
+                % diffs_whittle_set
+            )
 
         return outel
 
@@ -2719,13 +2762,12 @@ class VolumeObject(AbstractParentObject, AbstractChildObject, AbstractGeometricO
         self._allocated_only = _boolcast(val)
 
     @property
-    def annos(self):
+    def annos(self) -> typing.Set[str]:
         """Set of differential annotations.  Expected members are the keys of this class's _diff_attr_names dictionary."""
         return self._annos
 
     @annos.setter
-    def annos(self, val):
-        _typecheck(val, set)
+    def annos(self, val: typing.Set[str]) -> None:
         self._annos = val
 
     @property
@@ -2762,12 +2804,12 @@ class VolumeObject(AbstractParentObject, AbstractChildObject, AbstractGeometricO
         self._error = _strcast(val)
 
     @property
-    def externals(self):
+    def externals(self) -> OtherNSElementList:
         """(This property behaves the same as FileObject.externals.)"""
         return self._externals
 
     @externals.setter
-    def externals(self, val):
+    def externals(self, val: OtherNSElementList) -> None:
         _typecheck(val, OtherNSElementList)
         self._externals = val
 
@@ -2797,10 +2839,7 @@ class VolumeObject(AbstractParentObject, AbstractChildObject, AbstractGeometricO
         return self._ftype_str
 
     @ftype_str.setter
-    def ftype_str(
-      self,
-      val : typing.Optional[typing.Any]
-    ) -> None:
+    def ftype_str(self, val: typing.Optional[typing.Any]) -> None:
         self._ftype_str = _strcast(val)
 
     @property
@@ -2819,17 +2858,14 @@ class VolumeObject(AbstractParentObject, AbstractChildObject, AbstractGeometricO
     def original_volume(self, val):
         if not val is None:
             _typecheck(val, VolumeObject)
-        self._original_volume= val
+        self._original_volume = val
 
     @property
     def partition_offset(self) -> typing.Optional[int]:
         return self._partition_offset
 
     @partition_offset.setter
-    def partition_offset(
-      self,
-      val : typing.Optional[int]
-    ) -> None:
+    def partition_offset(self, val: typing.Optional[int]) -> None:
         self._partition_offset = _intcast(val)
 
     @property
@@ -2847,26 +2883,23 @@ class VolumeObject(AbstractParentObject, AbstractChildObject, AbstractGeometricO
 
 
 class HiveObject(AbstractParentObject, AbstractChildObject, AbstractGeometricObject):
-
     _class_properties: typing.List[str] = [
-      "annos",
-      "mtime",
-      "filename",
-      "original_fileobject",
-      "original_hive"
+        "annos",
+        "mtime",
+        "filename",
+        "original_fileobject",
+        "original_hive",
     ]
     # No child_objects property.  (This implementation doesn't support Objects attached to cells.)
 
     _diff_attr_names = {
-      "new":"delta:new_hive",
-      "deleted":"delta:deleted_hive",
-      "modified":"delta:modified_hive",
-      "matched":"delta:matched"
+        "new": "{%s}new_hive" % dfxml.XMLNS_DELTA,
+        "deleted": "{%s}deleted_hive" % dfxml.XMLNS_DELTA,
+        "modified": "{%s}modified_hive" % dfxml.XMLNS_DELTA,
+        "matched": "{%s}matched" % dfxml.XMLNS_DELTA,
     }
 
-    _incomparable_properties = set([
-      "annos"
-    ])
+    _incomparable_properties = set(["annos"])
 
     def __init__(self, *args, **kwargs):
         self._cells = []
@@ -2885,10 +2918,7 @@ class HiveObject(AbstractParentObject, AbstractChildObject, AbstractGeometricObj
         for c in self._cells:
             yield c
 
-    def append(
-      self,
-      value : AbstractChildObject
-    ) -> None:
+    def append(self, value: AbstractChildObject) -> None:
         _typecheck(value, CellObject)
         self._cells.append(value)
         super().append(value)
@@ -2921,7 +2951,7 @@ class HiveObject(AbstractParentObject, AbstractChildObject, AbstractGeometricObj
         elif xml_wrapper.strip()[-2:] == "/>":
             xml_head = xml_wrapper.strip()[:-2] + ">"
         else:
-            xml_head = xml_wrapper.strip()[:-len(xml_foot)]
+            xml_head = xml_wrapper.strip()[: -len(xml_foot)]
 
         output_fh.write(xml_head)
         output_fh.write("\n")
@@ -2954,7 +2984,7 @@ class HiveObject(AbstractParentObject, AbstractChildObject, AbstractGeometricObj
 
         if self.original_fileobject:
             tmpel = self.original_fileobject.to_Element()
-            #NOTE: "delta" namespace intentionally omitted.
+            # NOTE: "delta" namespace intentionally omitted.
             tmpel.tag = "original_fileobject"
             outel.append(tmpel)
 
@@ -3016,6 +3046,7 @@ class HiveObject(AbstractParentObject, AbstractChildObject, AbstractGeometricObj
 
 re_precision = re.compile(r"(?P<num>\d+)(?P<unit>(|m|n)s|d)?")
 
+
 class TimestampObject(AbstractObject):
     """
     Encodes the "dftime" type.  Wraps around dfxml.dftime, closely enough that this might just get folded into that class.
@@ -3028,8 +3059,8 @@ class TimestampObject(AbstractObject):
     def __init__(self, *args, **kwargs):
         self.name = kwargs.get("name")
         self.prec = kwargs.get("prec")
-        #_logger.debug("type(args) = %r" % type(args))
-        #_logger.debug("args = %r" % (args,))
+        # _logger.debug("type(args) = %r" % type(args))
+        # _logger.debug("args = %r" % (args,))
         if len(args) == 0:
             self.time = None
         elif len(args) == 1:
@@ -3041,7 +3072,7 @@ class TimestampObject(AbstractObject):
 
         super().__init__(*args, **kwargs)
 
-    def __eq__(self, other : object) -> bool:
+    def __eq__(self, other: object) -> bool:
         # Check type.
         if other is None:
             return False
@@ -3135,7 +3166,10 @@ class TimestampObject(AbstractObject):
     def name(self, value):
         if not value is None:
             if not value in TimestampObject.timestamp_name_list:
-                raise ValueError("The timestamp name must be in this list: %r.  Received: %r." % (TimestampObject.timestamp_name_list, value))
+                raise ValueError(
+                    "The timestamp name must be in this list: %r.  Received: %r."
+                    % (TimestampObject.timestamp_name_list, value)
+                )
         self._name = value
 
     @property
@@ -3150,17 +3184,19 @@ class TimestampObject(AbstractObject):
         if value is None:
             self._prec = None
             return self._prec
-        elif isinstance(value, tuple) and \
-          len(value) == 2 and \
-          isinstance(value[0], int) and \
-          isinstance(value[1], str):
+        elif (
+            isinstance(value, tuple)
+            and len(value) == 2
+            and isinstance(value[0], int)
+            and isinstance(value[1], str)
+        ):
             self._prec = value
             return self._prec
 
         m = re_precision.match(value)
         md = m.groupdict()
         tup = (int(md["num"]), md.get("unit") or "s")
-        #_logger.debug("tup = %r" % (tup,))
+        # _logger.debug("tup = %r" % (tup,))
         self._prec = tup
 
     @property
@@ -3176,7 +3212,7 @@ class TimestampObject(AbstractObject):
             self._time = None
         else:
             checked_value = dfxml.dftime(value)
-            #_logger.debug("checked_value.timestamp() = %r" % checked_value.timestamp())
+            # _logger.debug("checked_value.timestamp() = %r" % checked_value.timestamp())
             self._time = checked_value
             # Propagate timestamp value to other formats.
             self._timestamp = self._time.timestamp()
@@ -3202,86 +3238,80 @@ class FileObject(AbstractChildObject, AbstractGeometricObject):
     """
 
     _class_properties: typing.List[str] = [
-      "alloc",
-      "alloc_inode",
-      "alloc_name",
-      "annos",
-      "atime",
-      "bkup_time",
-      "compressed",
-      "crtime",
-      "ctime",
-      "data_brs",
-      "dtime",
-      "error",
-      "externals",
-      "filename",
-      "filesize",
-      "gid",
-      "id",
-      "inode",
-      "inode_brs",
-      "link_target",
-      "libmagic",
-      "md5",
-      "md6",
-      "meta_type",
-      "mode",
-      "mtime",
-      "name_brs",
-      "name_type",
-      "nlink",
-      "original_fileobject",
-      "orphan",
-      "parent_object",
-      "partition",
-      "seq",
-      "sha1",
-      "sha224",
-      "sha256",
-      "sha384",
-      "sha512",
-      "uid",
-      "unalloc",
-      "unused",
-      "used",
-      "volume_object"
+        "alloc",
+        "alloc_inode",
+        "alloc_name",
+        "annos",
+        "atime",
+        "bkup_time",
+        "compressed",
+        "crtime",
+        "ctime",
+        "data_brs",
+        "dtime",
+        "error",
+        "externals",
+        "filename",
+        "filesize",
+        "gid",
+        "id",
+        "inode",
+        "inode_brs",
+        "link_target",
+        "libmagic",
+        "md5",
+        "md6",
+        "meta_type",
+        "mode",
+        "mtime",
+        "name_brs",
+        "name_type",
+        "nlink",
+        "original_fileobject",
+        "orphan",
+        "parent_object",
+        "partition",
+        "seq",
+        "sha1",
+        "sha224",
+        "sha256",
+        "sha384",
+        "sha512",
+        "uid",
+        "unalloc",
+        "unused",
+        "used",
+        "volume_object",
     ]
 
     _br_facet_to_property = {
-      "data":"data_brs",
-      "inode":"inode_brs",
-      "name":"name_brs"
+        "data": "data_brs",
+        "inode": "inode_brs",
+        "name": "name_brs",
     }
 
     _hash_properties: typing.List[str] = [
-      "md5",
-      "md6",
-      "sha1",
-      "sha224",
-      "sha256",
-      "sha384",
-      "sha512"
+        "md5",
+        "md6",
+        "sha1",
+        "sha224",
+        "sha256",
+        "sha384",
+        "sha512",
     ]
 
-    #TODO There may be need in the future to compare the annotations as well.  It complicates make_differential_dfxml too much for now.
-    _incomparable_properties = set([
-      "annos",
-      "byte_runs",
-      "externals",
-      "id",
-      "unalloc",
-      "unused",
-      "volume_object"
-    ])
+    # TODO There may be need in the future to compare the annotations as well.  It complicates make_differential_dfxml too much for now.
+    _incomparable_properties = set(
+        ["annos", "byte_runs", "externals", "id", "unalloc", "unused", "volume_object"]
+    )
 
     _diff_attr_names = {
-      "new":"delta:new_file",
-      "deleted":"delta:deleted_file",
-      "renamed":"delta:renamed_file",
-      "changed":"delta:changed_file",
-      "modified":"delta:modified_file",
-      "matched":"delta:matched"
+        "new": "{%s}new_file" % dfxml.XMLNS_DELTA,
+        "deleted": "{%s}deleted_file" % dfxml.XMLNS_DELTA,
+        "renamed": "{%s}renamed_file" % dfxml.XMLNS_DELTA,
+        "changed": "{%s}changed_file" % dfxml.XMLNS_DELTA,
+        "modified": "{%s}modified_file" % dfxml.XMLNS_DELTA,
+        "matched": "{%s}matched" % dfxml.XMLNS_DELTA,
     }
 
     def __init__(self, *args, **kwargs) -> None:
@@ -3293,12 +3323,12 @@ class FileObject(AbstractChildObject, AbstractGeometricObject):
                 setattr(self, prop, kwargs.get(prop, OtherNSElementList()))
             else:
                 setattr(self, prop, kwargs.get(prop))
-        self._annos : typing.Set[str] = set()
-        self._diffs : typing.Set[str] = set()
+        self._annos: typing.Set[str] = set()
+        self._diffs: typing.Set[str] = set()
 
         super().__init__(*args, **kwargs)
 
-    def __eq__(self, other : object) -> bool:
+    def __eq__(self, other: object) -> bool:
         if other is None:
             return False
         _typecheck(other, FileObject)
@@ -3339,18 +3369,16 @@ class FileObject(AbstractChildObject, AbstractGeometricObject):
                 return True
         return False
 
-    def compare_to_original(
-      self,
-      *,
-      file_ignores : typing.Set[str] = set()
-    ) -> None:
-        self._diffs = self.compare_to_other(self.original_fileobject, True, file_ignores)
+    def compare_to_original(self, *, file_ignores: typing.Set[str] = set()) -> None:
+        self._diffs = self.compare_to_other(
+            self.original_fileobject, True, file_ignores
+        )
 
     def compare_to_other(
-      self,
-      other,
-      ignore_original : bool = False,
-      file_ignores : typing.Set[str] = set()
+        self,
+        other,
+        ignore_original: bool = False,
+        file_ignores: typing.Set[str] = set(),
     ) -> typing.Set[str]:
         _typecheck(other, FileObject)
 
@@ -3368,12 +3396,22 @@ class FileObject(AbstractChildObject, AbstractGeometricObject):
             if oval is None and sval is None:
                 continue
             if oval != sval:
-                #_logger.debug("propname, oval, sval: %r, %r, %r" % (propname, oval, sval))
+                # _logger.debug("propname, oval, sval: %r, %r, %r" % (propname, oval, sval))
                 diffs.add(propname)
 
         return diffs
 
-    def extract_facet(self, facet, image_path=None, buffer_size=1048576, partition_offset=None, sector_size=512, errlog=None, statlog=None, icat_threshold = 268435456):
+    def extract_facet(
+        self,
+        facet,
+        image_path=None,
+        buffer_size=1048576,
+        partition_offset=None,
+        sector_size=512,
+        errlog=None,
+        statlog=None,
+        icat_threshold=268435456,
+    ):
         """
         Generator.  Extracts the facet with a SleuthKit tool, yielding chunks of the data.
 
@@ -3392,12 +3430,15 @@ class FileObject(AbstractChildObject, AbstractGeometricObject):
                 _partition_offset = self.volume_object.partition_offset
 
         # Try using icat; needs inode number and volume offset.  We're additionally requiring the filesize be known.
-        #TODO The icat needs a little more experimentation.
-        if False and facet == "content" and \
-          not self.filesize is None and \
-          self.filesize >= icat_threshold and \
-          not self.inode is None and \
-          not _partition_offset is None:
+        # TODO The icat needs a little more experimentation.
+        if (
+            False
+            and facet == "content"
+            and not self.filesize is None
+            and self.filesize >= icat_threshold
+            and not self.inode is None
+            and not _partition_offset is None
+        ):
             _logger.debug("Extracting with icat: %r." % self)
 
             # Set up logging if desired.
@@ -3414,7 +3455,7 @@ class FileObject(AbstractChildObject, AbstractGeometricObject):
             cmd.append("-b")
             cmd.append(str(sector_size))
             cmd.append("-o")
-            cmd.append(str(self.volume_object.partition_offset//sector_size))
+            cmd.append(str(self.volume_object.partition_offset // sector_size))
             if not self.volume_object.ftype_str is None:
                 cmd.append("-f")
                 cmd.append(self.volume_object.ftype_str)
@@ -3426,7 +3467,7 @@ class FileObject(AbstractChildObject, AbstractGeometricObject):
             len_to_read = self.filesize
             while len_to_read > 0:
                 buffer_data = p.stdout.read(buffer_size)
-                yield_data = buffer_data[ : min(len_to_read, buffer_size)]
+                yield_data = buffer_data[: min(len_to_read, buffer_size)]
                 if len(yield_data) > 0:
                     yield yield_data
                 else:
@@ -3440,15 +3481,21 @@ class FileObject(AbstractChildObject, AbstractGeometricObject):
 
                     # Act on a bad status.
                     if last_status != 0:
-                        raise subprocess.CalledProcessError(last_status, " ".join(cmd), "icat failed.")
+                        raise subprocess.CalledProcessError(
+                            last_status, " ".join(cmd), "icat failed."
+                        )
                 len_to_read -= buffer_size
 
             # Clean up file handles.
-            if status_fh: status_fh.close()
-            if stderr_fh: stderr_fh.close()
+            if status_fh:
+                status_fh.close()
+            if stderr_fh:
+                stderr_fh.close()
 
         elif not self.byte_runs is None:
-            for chunk in self.byte_runs.iter_contents(_image_path, buffer_size, sector_size, errlog, statlog):
+            for chunk in self.byte_runs.iter_contents(
+                _image_path, buffer_size, sector_size, errlog, statlog
+            ):
                 yield chunk
 
     def is_allocated(self) -> typing.Optional[bool]:
@@ -3469,32 +3516,34 @@ class FileObject(AbstractChildObject, AbstractGeometricObject):
         global _warned_hashes
         _typecheck(e, (ET.Element, ET.ElementTree))
 
-        #_logger.debug("FileObject.populate_from_Element(%r)" % e)
+        # _logger.debug("FileObject.populate_from_Element(%r)" % e)
 
         # Split into namespace and tagname.
         (ns, tn) = _qsplit(e.tag)
         assert tn in ["fileobject", "original_fileobject", "parent_object"]
 
         # Map "delta:" attributes of <fileobject>s into the self.annos set.
-        #_logger.debug("self.annos, before: %r." % self.annos)
+        # _logger.debug("self.annos, before: %r." % self.annos)
         _read_differential_annotations(FileObject._diff_attr_names, e, self.annos)
-        #_logger.debug("self.annos, after: %r." % self.annos)
+        # _logger.debug("self.annos, after: %r." % self.annos)
 
         # Look through direct-child elements for other properties.
         for ce in e.findall("./*"):
             (cns, ctn) = _qsplit(ce.tag)
-            #_logger.debug("Populating from child element: %r." % ce.tag)
+            # _logger.debug("Populating from child element: %r." % ce.tag)
 
             # Inherit any marked changes.
             for attr in ce.attrib:
-                #_logger.debug("Inspecting attr for diff. annos: %r." % attr)
+                # _logger.debug("Inspecting attr for diff. annos: %r." % attr)
                 (ns, an) = _qsplit(attr)
                 if an == "changed_property" and ns == dfxml.XMLNS_DELTA:
-                    #_logger.debug("Identified changed property: %r." % ctn)
-                    #TODO There may be a more elegant way of handling the hashes and any other attribute-dependent element-to-property mapping.  Probably involving XPath.
+                    # _logger.debug("Identified changed property: %r." % ctn)
+                    # TODO There may be a more elegant way of handling the hashes and any other attribute-dependent element-to-property mapping.  Probably involving XPath.
                     if ctn == "hashdigest":
                         if "type" not in ce.attrib:
-                            raise AttributeError("Attribute 'type' not found.  Every hashdigest element should have a 'type' attribute to identify the hash type.")
+                            raise AttributeError(
+                                "Attribute 'type' not found.  Every hashdigest element should have a 'type' attribute to identify the hash type."
+                            )
                         self.diffs.add(ce.attrib["type"].lower())
                     elif ctn == "byte_runs":
                         facet = ce.attrib.get("facet")
@@ -3509,7 +3558,9 @@ class FileObject(AbstractChildObject, AbstractGeometricObject):
                     if ce.attrib["facet"] not in FileObject._br_facet_to_property:
                         if not ce.attrib["facet"] in _warned_byterun_facets:
                             _warned_byterun_facets.add(ce.attrib["facet"])
-                            _logger.warning("byte_runs facet %r was unexpected.  Will not interpret this element.")
+                            _logger.warning(
+                                "byte_runs facet %r was unexpected.  Will not interpret this element."
+                            )
                     else:
                         brs = ByteRuns()
                         brs.populate_from_Element(ce)
@@ -3528,7 +3579,10 @@ class FileObject(AbstractChildObject, AbstractGeometricObject):
                 else:
                     if (type_lower, FileObject) not in _warned_hashes:
                         _warned_hashes.add((type_lower, FileObject))
-                        _logger.warning("Uncertain what to do with this hash encountered in a FileObject: %r." % type_lower)
+                        _logger.warning(
+                            "Uncertain what to do with this hash encountered in a FileObject: %r."
+                            % type_lower
+                        )
             elif ctn == "original_fileobject":
                 self.original_fileobject = FileObject()
                 self.original_fileobject.populate_from_Element(ce)
@@ -3540,19 +3594,18 @@ class FileObject(AbstractChildObject, AbstractGeometricObject):
                 getattr(self, ctn).populate_from_Element(ce)
             elif ctn in FileObject._class_properties:
                 setattr(self, ctn, ce.text)
-            elif cns not in [dfxml.XMLNS_DFXML, ""]:
+            elif cns not in [None, dfxml.XMLNS_DFXML, ""]:
                 # Put all non-DFXML-namespace elements into the externals list.
                 self.externals.append(ce)
             else:
                 if (cns, ctn, FileObject) not in _warned_elements:
                     _warned_elements.add((cns, ctn, FileObject))
-                    _logger.warning("Uncertain what to do with this element in a FileObject: %r" % ce)
+                    _logger.warning(
+                        "Uncertain what to do with this element in a FileObject: %r"
+                        % ce
+                    )
 
-    def populate_from_stat(
-      self,
-      s : os.stat_result,
-      **kwargs
-    ) -> None:
+    def populate_from_stat(self, s: os.stat_result, **kwargs) -> None:
         """
         Populates FileObject fields from a stat() call.
         Optional arguments:
@@ -3560,14 +3613,17 @@ class FileObject(AbstractChildObject, AbstractGeometricObject):
         * name_type_hint - name_type to use for this FileObject, if not already recorded in self.
         """
         import os
+
         _typecheck(s, os.stat_result)
 
         ignore_properties = kwargs.get("ignore_properties", dict())
-        #_logger.debug("ignore_properties = %r." % ignore_properties)
+        # _logger.debug("ignore_properties = %r." % ignore_properties)
 
         name_type = self.name_type or kwargs.get("name_type_hint")
 
-        _should_ignore = lambda x: FileObject._should_ignore_property(ignore_properties, name_type, x)
+        _should_ignore = lambda x: FileObject._should_ignore_property(
+            ignore_properties, name_type, x
+        )
 
         if not _should_ignore("mode"):
             self.mode = s.st_mode
@@ -3619,16 +3675,19 @@ class FileObject(AbstractChildObject, AbstractGeometricObject):
                 outel.attrib[FileObject._diff_attr_names[annodiff]] = "1"
                 annos_whittle_set.remove(annodiff)
         if len(annos_whittle_set) > 0:
-            _logger.warning("Failed to export some differential annotations: %r." % annos_whittle_set)
+            _logger.warning(
+                "Failed to export some differential annotations: %r."
+                % annos_whittle_set
+            )
 
         def _anno_change(el):
             if el.tag in self.diffs:
-                el.attrib["delta:changed_property"] = "1"
+                el.attrib["{%s}changed_property" % dfxml.XMLNS_DELTA] = "1"
                 diffs_whittle_set.remove(el.tag)
 
         def _anno_hash(el):
             if el.attrib["type"] in self.diffs:
-                el.attrib["delta:changed_property"] = "1"
+                el.attrib["{%s}changed_property" % dfxml.XMLNS_DELTA] = "1"
                 diffs_whittle_set.remove(el.attrib["type"])
 
         def _anno_byte_runs(el):
@@ -3637,8 +3696,8 @@ class FileObject(AbstractChildObject, AbstractGeometricObject):
             else:
                 prop = "data_brs"
             if prop in self.diffs:
-                el.attrib["delta:changed_property"] = "1"
-                #_logger.debug("diffs_whittle_set = %r." % diffs_whittle_set)
+                el.attrib["{%s}changed_property" % dfxml.XMLNS_DELTA] = "1"
+                # _logger.debug("diffs_whittle_set = %r." % diffs_whittle_set)
                 diffs_whittle_set.remove(prop)
 
         # Recall that Element text must be a string.
@@ -3671,9 +3730,10 @@ class FileObject(AbstractChildObject, AbstractGeometricObject):
                 outel.append(tmpel)
 
         _using_facets = False
+
         def _append_byte_runs(name, value):
             """The complicated part here is setting the "data" facet on the byte runs, because we assume that no facet definitions means that for this file, there's only the one byte_runs list for data."""
-            #_logger.debug("_append_byte_runs(%r, %r)" % (name, value))
+            # _logger.debug("_append_byte_runs(%r, %r)" % (name, value))
             if value or name in diffs_whittle_set:
                 if value:
                     tmpel = value.to_Element()
@@ -3682,9 +3742,9 @@ class FileObject(AbstractChildObject, AbstractGeometricObject):
                 else:
                     tmpel = ET.Element("byte_runs")
                     propname_to_facet = {
-                      "data_brs": "data",
-                      "inode_brs": "inode",
-                      "name_brs": "name"
+                        "data_brs": "data",
+                        "inode_brs": "inode",
+                        "name_brs": "name",
                     }
                     if name in propname_to_facet:
                         _using_facets = True
@@ -3735,7 +3795,7 @@ class FileObject(AbstractChildObject, AbstractGeometricObject):
         _append_str("id", self.id)
         _append_str("name_type", self.name_type)
         _append_str("filesize", self.filesize)
-        #TODO Define a better flag for if we're going to output <alloc> elements.
+        # TODO Define a better flag for if we're going to output <alloc> elements.
         if self.alloc_name is None and self.alloc_inode is None:
             _append_bool("alloc", self.alloc)
         else:
@@ -3770,10 +3830,15 @@ class FileObject(AbstractChildObject, AbstractGeometricObject):
         _append_hash("sha256", self.sha256)
         _append_hash("sha384", self.sha384)
         _append_hash("sha512", self.sha512)
-        _append_object("original_fileobject", self.original_fileobject, "delta:")
+        _append_object(
+            "original_fileobject", self.original_fileobject, "{%s}" % dfxml.XMLNS_DELTA
+        )
 
         if len(diffs_whittle_set) > 0:
-            _logger.warning("Did not annotate all of the differing properties of this file.  Remaining properties:  %r." % diffs_whittle_set)
+            _logger.warning(
+                "Did not annotate all of the differing properties of this file.  Remaining properties:  %r."
+                % diffs_whittle_set
+            )
 
         return outel
 
@@ -3783,8 +3848,8 @@ class FileObject(AbstractChildObject, AbstractGeometricObject):
     @property
     def alloc(self):
         """Note that setting .alloc will affect the value of .unalloc, and vice versa.  The last one to set wins."""
-        #TODO alloc isn't deprecated yet.
-        #warnings.warn("The FileObject.alloc property is deprecated.  Use .alloc_inode and/or .alloc_name instead.  .alloc is proxied as True if alloc_inode and alloc_name are both True.", warnings.DeprecationWarning)
+        # TODO alloc isn't deprecated yet.
+        # warnings.warn("The FileObject.alloc property is deprecated.  Use .alloc_inode and/or .alloc_name instead.  .alloc is proxied as True if alloc_inode and alloc_name are both True.", warnings.DeprecationWarning)
         if self.alloc_inode and self.alloc_name:
             return True
         else:
@@ -3887,9 +3952,7 @@ class FileObject(AbstractChildObject, AbstractGeometricObject):
             self._crtime = checked_val
 
     @property
-    def data_brs(
-      self
-    ) -> typing.Optional[ByteRuns]:
+    def data_brs(self) -> typing.Optional[ByteRuns]:
         """
         The byte runs that store the file's content.
         This property is now a synonym for the data byte runs (.byte_runs).
@@ -3897,10 +3960,7 @@ class FileObject(AbstractChildObject, AbstractGeometricObject):
         return self.byte_runs
 
     @data_brs.setter
-    def data_brs(
-      self,
-      val : typing.Optional[ByteRuns]
-    ) -> None:
+    def data_brs(self, val: typing.Optional[ByteRuns]) -> None:
         self.byte_runs = val
 
     @property
@@ -3937,12 +3997,14 @@ class FileObject(AbstractChildObject, AbstractGeometricObject):
     @filename.setter
     def filename(self, val):
         self._filename = _strcast(val)
+
     @property
     def externals(self):
         """
         This property exposes XML elements of other namespaces.  Since these elements can be of arbitrary complexity, this list is solely comprised ofxml.etree.ElementTree.Element objects.  The tags must be a fully-qualified namespace (of the pattern {URI}localname).  If generating the Elements with a script instead of de-serializing from XML, you should issue an ElementTree register_namespace call with your namespace abbreviation prefix.
         NOTE:  Diffs are currently NOT computed for external elements.
-        NOTE:  This property should be considered unstable, as the interface is in an early design phase.  Please notify the maintainers of this library (see the Git history for the Objects.py file) if you are using this interface and wish to be notified of updates."""
+        NOTE:  This property should be considered unstable, as the interface is in an early design phase.  Please notify the maintainers of this library (see the Git history for the Objects.py file) if you are using this interface and wish to be notified of updates.
+        """
         return self._externals
 
     @externals.setter
@@ -3991,32 +4053,22 @@ class FileObject(AbstractChildObject, AbstractGeometricObject):
         self._libmagic = _strcast(val)
 
     @property
-    def link_target(
-      self
-    ) -> typing.Optional[str]:
+    def link_target(self) -> typing.Optional[str]:
         return self._link_target
 
     @link_target.setter
-    def link_target(
-      self,
-      val : typing.Optional[str]
-    ) -> None:
+    def link_target(self, val: typing.Optional[str]) -> None:
         if not val is None:
             _typecheck(val, str)
         self._link_target = val
 
     @property
-    def inode_brs(
-      self
-    ) -> typing.Optional[ByteRuns]:
+    def inode_brs(self) -> typing.Optional[ByteRuns]:
         """The byte run(s) that represents the file's metadata object (the inode or the MFT entry).  In file systems that do not distinguish between inode and directory entry, e.g. FAT, .inode_brs should be equivalent to .name_brs, if both fields are present."""
         return self._inode_brs
 
     @inode_brs.setter
-    def inode_brs(
-      self,
-      val : typing.Optional[ByteRuns]
-    ) -> None:
+    def inode_brs(self, val: typing.Optional[ByteRuns]) -> None:
         if not val is None:
             _typecheck(val, ByteRuns)
         self._inode_brs = val
@@ -4069,17 +4121,12 @@ class FileObject(AbstractChildObject, AbstractGeometricObject):
             self._mtime = checked_val
 
     @property
-    def name_brs(
-      self
-    ) -> typing.Optional[ByteRuns]:
+    def name_brs(self) -> typing.Optional[ByteRuns]:
         """The byte run(s) that represents the file's name object (the directory entry).  In file systems that do not distinguish between inode and directory entry, e.g. FAT, .inode_brs should be equivalent to .name_brs, if both fields are present."""
         return self._name_brs
 
     @name_brs.setter
-    def name_brs(
-      self,
-      val : typing.Optional[ByteRuns]
-    ) -> None:
+    def name_brs(self, val: typing.Optional[ByteRuns]) -> None:
         if not val is None:
             _typecheck(val, ByteRuns)
         self._name_brs = val
@@ -4094,8 +4141,24 @@ class FileObject(AbstractChildObject, AbstractGeometricObject):
             self._name_type = val
         else:
             cast_val = _strcast(val)
-            if cast_val not in ["-", "V", "b", "c", "d", "h", "l", "p", "r", "s", "v", "w"]:
-                raise ValueError("Unexpected name_type received: %r (casted to %r)." % (val, cast_val))
+            if cast_val not in [
+                "-",
+                "V",
+                "b",
+                "c",
+                "d",
+                "h",
+                "l",
+                "p",
+                "r",
+                "s",
+                "v",
+                "w",
+            ]:
+                raise ValueError(
+                    "Unexpected name_type received: %r (casted to %r)."
+                    % (val, cast_val)
+                )
             self._name_type = cast_val
 
     @property
@@ -4251,11 +4314,11 @@ class OtherNSElementList(list):
         if ns == dfxml.XMLNS_DFXML:
             raise ValueError("'External' elements must be a non-DFXML namespace.")
         # Register qname for later output.
-        #TODO Devise a module-level interface for namespace abbreviations.
+        # TODO Devise a module-level interface for namespace abbreviations.
 
     def __repr__(self):
         # Unwrap the string representation of this class's type name (necessary because we don't necessarily know if it'll be Objects.Other... or just Other...).
-        _typestr = str(type(self))[ len("<class '") : -len("'>") ]
+        _typestr = str(type(self))[len("<class '") : -len("'>")]
         return _typestr + "(" + super(OtherNSElementList, self).__repr__() + ")"
 
     def __setitem__(self, idx, value):
@@ -4263,46 +4326,40 @@ class OtherNSElementList(list):
         OtherNSElementList._check_qname(value.tag)
         super(OtherNSElementList, self).__setitem__(idx, value)
 
-    def append(
-      self,
-      value : ET.Element
-    ) -> None:
+    def append(self, value: ET.Element) -> None:
         _typecheck(value, ET.Element)
         OtherNSElementList._check_qname(value.tag)
         super(OtherNSElementList, self).append(value)
 
 
 class CellObject(AbstractChildObject, AbstractGeometricObject):
-
     _class_properties: typing.List[str] = [
-      "alloc",
-      "annos",
-      "basename",
-      "cellpath",
-      "data",
-      "data_conversions",
-      "data_encoding",
-      "data_type",
-      "error",
-      "mtime",
-      "name_type",
-      "original_cellobject",
-      "parent_object",
-      "root"
+        "alloc",
+        "annos",
+        "basename",
+        "cellpath",
+        "data",
+        "data_conversions",
+        "data_encoding",
+        "data_type",
+        "error",
+        "mtime",
+        "name_type",
+        "original_cellobject",
+        "parent_object",
+        "root",
     ]
 
     _diff_attr_names = {
-      "new":"delta:new_cell",
-      "deleted":"delta:deleted_cell",
-      "changed":"delta:changed_cell",
-      "modified":"delta:modified_cell",
-      "matched":"delta:matched"
+        "new": "{%s}new_cell" % dfxml.XMLNS_DELTA,
+        "deleted": "{%s}deleted_cell" % dfxml.XMLNS_DELTA,
+        "changed": "{%s}changed_cell" % dfxml.XMLNS_DELTA,
+        "modified": "{%s}modified_cell" % dfxml.XMLNS_DELTA,
+        "matched": "{%s}matched" % dfxml.XMLNS_DELTA,
     }
 
-    #TODO There may be need in the future to compare the annotations as well.
-    _incomparable_properties = set([
-      "annos"
-    ])
+    # TODO There may be need in the future to compare the annotations as well.
+    _incomparable_properties = set(["annos"])
 
     def __init__(self, *args, **kwargs):
         # These properties must be assigned first for sanity check dependencies.
@@ -4318,7 +4375,7 @@ class CellObject(AbstractChildObject, AbstractGeometricObject):
 
         super().__init__(*args, **kwargs)
 
-    def __eq__(self, other : object) -> bool:
+    def __eq__(self, other: object) -> bool:
         if other is None:
             return False
         _typecheck(other, CellObject)
@@ -4359,7 +4416,7 @@ class CellObject(AbstractChildObject, AbstractGeometricObject):
             if oval is None and sval is None:
                 continue
             if oval != sval:
-                #_logger.debug("propname, oval, sval: %r, %r, %r" % (propname, oval, sval))
+                # _logger.debug("propname, oval, sval: %r, %r, %r" % (propname, oval, sval))
                 diffs.add(propname)
 
         return diffs
@@ -4423,18 +4480,29 @@ class CellObject(AbstractChildObject, AbstractGeometricObject):
             else:
                 if (cns, ctn, CellObject) not in _warned_elements:
                     _warned_elements.add((cns, ctn, CellObject))
-                    _logger.warning("Uncertain what to do with this element in a CellObject: %r" % ce)
+                    _logger.warning(
+                        "Uncertain what to do with this element in a CellObject: %r"
+                        % ce
+                    )
 
         self.sanity_check()
 
     def sanity_check(self):
         if self.name_type and self.name_type != "k":
             if self.mtime:
-                _logger.info("Error occurred sanity-checking this CellObject: %r." % self)
-                raise ValueError("A Registry Key (node) is the only kind of CellObject that can have a timestamp.")
+                _logger.info(
+                    "Error occurred sanity-checking this CellObject: %r." % self
+                )
+                raise ValueError(
+                    "A Registry Key (node) is the only kind of CellObject that can have a timestamp."
+                )
             if self.root:
-                _logger.info("Error occurred sanity-checking this CellObject: %r." % self)
-                raise ValueError("A Registry Key (node) is the only kind of CellObject that can have the 'root' attribute.")
+                _logger.info(
+                    "Error occurred sanity-checking this CellObject: %r." % self
+                )
+                raise ValueError(
+                    "A Registry Key (node) is the only kind of CellObject that can have the 'root' attribute."
+                )
 
     def to_Element(self):
         self.sanity_check()
@@ -4449,15 +4517,18 @@ class CellObject(AbstractChildObject, AbstractGeometricObject):
                 outel.attrib[CellObject._diff_attr_names[annodiff]] = "1"
                 annos_whittle_set.remove(annodiff)
         if len(annos_whittle_set) > 0:
-            _logger.warning("Failed to export some differential annotations: %r." % annos_whittle_set)
+            _logger.warning(
+                "Failed to export some differential annotations: %r."
+                % annos_whittle_set
+            )
 
         def _anno_change(el):
             if el.tag in self.diffs:
-                el.attrib["delta:changed_property"] = "1"
+                el.attrib["{%s}changed_property" % dfxml.XMLNS_DELTA] = "1"
                 diffs_whittle_set.remove(el.tag)
             # Do an additional check for data_encoding, which is serialized as an attribute.
             if el.tag == "data" and "data_encoding" in self.diffs:
-                el.attrib["delta:changed_property"] = "1"
+                el.attrib["{%s}changed_property" % dfxml.XMLNS_DELTA] = "1"
                 diffs_whittle_set.remove("data_encoding")
 
         def _append_bool(name, value):
@@ -4490,7 +4561,7 @@ class CellObject(AbstractChildObject, AbstractGeometricObject):
                 _anno_change(tmpel)
                 outel.append(tmpel)
 
-        #TODO root should be an element too.  Revise schema.
+        # TODO root should be an element too.  Revise schema.
         if self.root:
             outel.attrib["root"] = str(self.root)
 
@@ -4530,7 +4601,10 @@ class CellObject(AbstractChildObject, AbstractGeometricObject):
         _append_object("original_cellobject", self.original_cellobject)
 
         if len(diffs_whittle_set) > 0:
-            _logger.warning("Did not annotate all of the differing properties of this file.  Remaining properties:  %r." % diffs_whittle_set)
+            _logger.warning(
+                "Did not annotate all of the differing properties of this file.  Remaining properties:  %r."
+                % diffs_whittle_set
+            )
 
         return outel
 
@@ -4615,22 +4689,25 @@ class CellObject(AbstractChildObject, AbstractGeometricObject):
     @data_type.setter
     def data_type(self, val):
         if not val in [
-          None,
-          "REG_NONE",
-          "REG_SZ",
-          "REG_EXPAND_SZ",
-          "REG_BINARY",
-          "REG_DWORD",
-          "REG_DWORD_BIG_ENDIAN",
-          "REG_LINK",
-          "REG_MULTI_SZ",
-          "REG_RESOURCE_LIST",
-          "REG_FULL_RESOURCE_DESCRIPTOR",
-          "REG_RESOURCE_REQUIREMENTS_LIST",
-          "REG_QWORD"
+            None,
+            "REG_NONE",
+            "REG_SZ",
+            "REG_EXPAND_SZ",
+            "REG_BINARY",
+            "REG_DWORD",
+            "REG_DWORD_BIG_ENDIAN",
+            "REG_LINK",
+            "REG_MULTI_SZ",
+            "REG_RESOURCE_LIST",
+            "REG_FULL_RESOURCE_DESCRIPTOR",
+            "REG_RESOURCE_REQUIREMENTS_LIST",
+            "REG_QWORD",
         ]:
             if not isinstance(val, int) or (isinstance(val, str) and val.isdigit()):
-                raise ValueError("Unexpected value data type received: %r, type %r." % (val, type(val)))
+                raise ValueError(
+                    "Unexpected value data type received: %r, type %r."
+                    % (val, type(val))
+                )
         self._data_type = val
 
     @property
@@ -4718,166 +4795,137 @@ class CellObject(AbstractChildObject, AbstractGeometricObject):
 
 
 class Parser(object):
-
     # Set up state machine.  (Would use enum if supported in Python 2.)
-    _INPUT_START                =  -1
+    _INPUT_START = -1
 
-    _DFXML_START                =   0
-    DFXML_PRESTREAM             =   1
-    DFXML_POSTSTREAM            =   2
-    _DFXML_END                  = 999
+    _DFXML_START = 0
+    DFXML_PRESTREAM = 1
+    DFXML_POSTSTREAM = 2
+    _DFXML_END = 999
 
-    _DFXML_METADATA_START       =  10
-    _DFXML_METADATA_END         =  19
+    _DFXML_METADATA_START = 10
+    _DFXML_METADATA_END = 19
 
-    _DISK_IMAGE_START           = 100
-    DISK_IMAGE_PRESTREAM        = 101
-    DISK_IMAGE_POSTSTREAM       = 102
-    _DISK_IMAGE_END             = 199
+    _DISK_IMAGE_START = 100
+    DISK_IMAGE_PRESTREAM = 101
+    DISK_IMAGE_POSTSTREAM = 102
+    _DISK_IMAGE_END = 199
 
-    _PARTITION_SYSTEM_START     = 200
-    PARTITION_SYSTEM_PRESTREAM  = 201
+    _PARTITION_SYSTEM_START = 200
+    PARTITION_SYSTEM_PRESTREAM = 201
     PARTITION_SYSTEM_POSTSTREAM = 202
-    _PARTITION_SYSTEM_END       = 299
+    _PARTITION_SYSTEM_END = 299
 
-    _PARTITION_START            = 300
-    PARTITION_PRESTREAM         = 301
-    PARTITION_POSTSTREAM        = 302
-    _PARTITION_END              = 399
+    _PARTITION_START = 300
+    PARTITION_PRESTREAM = 301
+    PARTITION_POSTSTREAM = 302
+    _PARTITION_END = 399
 
-    _VOLUME_START               = 400
-    VOLUME_PRESTREAM            = 401
-    VOLUME_POSTSTREAM           = 402
-    _VOLUME_END                 = 499
+    _VOLUME_START = 400
+    VOLUME_PRESTREAM = 401
+    VOLUME_POSTSTREAM = 402
+    _VOLUME_END = 499
 
-    _FILE_START                 = 500
-    _FILE_END                   = 599
+    _FILE_START = 500
+    _FILE_END = 599
 
     transitions = {
-      _INPUT_START: {
-        _DFXML_START
-      },
-      _DFXML_START: {
-        DFXML_PRESTREAM
-      },
-      _DFXML_END: set(),
-      _DFXML_METADATA_START: {
-        _DFXML_METADATA_END
-      },
-      _DFXML_METADATA_END: {
-        DFXML_PRESTREAM
-      },
-      _DISK_IMAGE_START: {
-        DISK_IMAGE_PRESTREAM
-      },
-      _DISK_IMAGE_END: {
-        _DFXML_END,
-        _DISK_IMAGE_START,
-        _FILE_START,
-        _PARTITION_SYSTEM_START,
-        _PARTITION_START, #This is only expected to happen in a DFXMLObject.
-        _VOLUME_START,
-        DFXML_POSTSTREAM,
-        VOLUME_POSTSTREAM
-      },
-      _PARTITION_SYSTEM_START: {
-        PARTITION_SYSTEM_PRESTREAM
-      },
-      _PARTITION_SYSTEM_END: {
-        _DFXML_END,
-        _PARTITION_SYSTEM_START,
-        _PARTITION_START,
-        _VOLUME_START,
-        _FILE_START,
-        DFXML_POSTSTREAM,
-        DISK_IMAGE_POSTSTREAM,
-        PARTITION_POSTSTREAM
-      },
-      _PARTITION_START: {
-        PARTITION_PRESTREAM
-      },
-      _PARTITION_END: {
-        _PARTITION_START,
-        _VOLUME_START, #This is only expected to happen in a DFXMLObject.
-        _FILE_START,
-        DFXML_POSTSTREAM,
-        PARTITION_POSTSTREAM,
-        PARTITION_SYSTEM_POSTSTREAM
-      },
-      _VOLUME_START: {
-        VOLUME_PRESTREAM
-      },
-      _VOLUME_END: {
-        _DFXML_END,
-        _FILE_START,
-        _VOLUME_START,
-        _VOLUME_END,
-        DFXML_POSTSTREAM,
-        DISK_IMAGE_POSTSTREAM,
-        PARTITION_POSTSTREAM,
-        VOLUME_POSTSTREAM
-      },
-      _FILE_START: {
-        _FILE_END
-      },
-      _FILE_END: {
-        _FILE_START,
-        _PARTITION_SYSTEM_END,
-        DFXML_POSTSTREAM,
-        DISK_IMAGE_POSTSTREAM,
-        PARTITION_SYSTEM_POSTSTREAM,
-        PARTITION_POSTSTREAM,
-        VOLUME_POSTSTREAM
-      },
-      DFXML_PRESTREAM: {
-        _DFXML_END,
-        _DFXML_METADATA_START,
-        _DISK_IMAGE_START,
-        _PARTITION_SYSTEM_START,
-        _PARTITION_START,
-        _VOLUME_START,
-        _FILE_START,
-        DFXML_POSTSTREAM
-      },
-      DFXML_POSTSTREAM: {
-        _DFXML_END
-      },
-      DISK_IMAGE_POSTSTREAM: {
-        _DISK_IMAGE_END
-      },
-      DISK_IMAGE_PRESTREAM: {
-        _PARTITION_SYSTEM_START,
-        _VOLUME_START,
-        _FILE_START,
-        DISK_IMAGE_POSTSTREAM
-      },
-      PARTITION_SYSTEM_POSTSTREAM: {
-        _PARTITION_SYSTEM_END
-      },
-      PARTITION_SYSTEM_PRESTREAM: {
-        _FILE_START,
-        _PARTITION_START,
-        PARTITION_SYSTEM_POSTSTREAM
-      },
-      PARTITION_POSTSTREAM: {
-        _PARTITION_END
-      },
-      PARTITION_PRESTREAM: {
-        _PARTITION_START,
-        _PARTITION_SYSTEM_START,
-        _VOLUME_START,
-        _FILE_START,
-        PARTITION_POSTSTREAM
-      },
-      VOLUME_POSTSTREAM: {
-        _VOLUME_END
-      },
-      VOLUME_PRESTREAM: {
-        _DISK_IMAGE_START,
-        _VOLUME_START,
-        _FILE_START,
-        VOLUME_POSTSTREAM
-      }
+        _INPUT_START: {_DFXML_START},
+        _DFXML_START: {DFXML_PRESTREAM},
+        _DFXML_END: set(),
+        _DFXML_METADATA_START: {_DFXML_METADATA_END},
+        _DFXML_METADATA_END: {DFXML_PRESTREAM},
+        _DISK_IMAGE_START: {DISK_IMAGE_PRESTREAM},
+        _DISK_IMAGE_END: {
+            _DFXML_END,
+            _DISK_IMAGE_START,
+            _FILE_START,
+            _PARTITION_SYSTEM_START,
+            _PARTITION_START,  # This is only expected to happen in a DFXMLObject.
+            _VOLUME_START,
+            DFXML_POSTSTREAM,
+            VOLUME_POSTSTREAM,
+        },
+        _PARTITION_SYSTEM_START: {PARTITION_SYSTEM_PRESTREAM},
+        _PARTITION_SYSTEM_END: {
+            _DFXML_END,
+            _PARTITION_SYSTEM_START,
+            _PARTITION_START,
+            _VOLUME_START,
+            _FILE_START,
+            DFXML_POSTSTREAM,
+            DISK_IMAGE_POSTSTREAM,
+            PARTITION_POSTSTREAM,
+        },
+        _PARTITION_START: {PARTITION_PRESTREAM},
+        _PARTITION_END: {
+            _PARTITION_START,
+            _VOLUME_START,  # This is only expected to happen in a DFXMLObject.
+            _FILE_START,
+            DFXML_POSTSTREAM,
+            PARTITION_POSTSTREAM,
+            PARTITION_SYSTEM_POSTSTREAM,
+        },
+        _VOLUME_START: {VOLUME_PRESTREAM},
+        _VOLUME_END: {
+            _DFXML_END,
+            _FILE_START,
+            _VOLUME_START,
+            _VOLUME_END,
+            DFXML_POSTSTREAM,
+            DISK_IMAGE_POSTSTREAM,
+            PARTITION_POSTSTREAM,
+            VOLUME_POSTSTREAM,
+        },
+        _FILE_START: {_FILE_END},
+        _FILE_END: {
+            _FILE_START,
+            _PARTITION_SYSTEM_END,
+            DFXML_POSTSTREAM,
+            DISK_IMAGE_POSTSTREAM,
+            PARTITION_SYSTEM_POSTSTREAM,
+            PARTITION_POSTSTREAM,
+            VOLUME_POSTSTREAM,
+        },
+        DFXML_PRESTREAM: {
+            _DFXML_END,
+            _DFXML_METADATA_START,
+            _DISK_IMAGE_START,
+            _PARTITION_SYSTEM_START,
+            _PARTITION_START,
+            _VOLUME_START,
+            _FILE_START,
+            DFXML_POSTSTREAM,
+        },
+        DFXML_POSTSTREAM: {_DFXML_END},
+        DISK_IMAGE_POSTSTREAM: {_DISK_IMAGE_END},
+        DISK_IMAGE_PRESTREAM: {
+            _PARTITION_SYSTEM_START,
+            _VOLUME_START,
+            _FILE_START,
+            DISK_IMAGE_POSTSTREAM,
+        },
+        PARTITION_SYSTEM_POSTSTREAM: {_PARTITION_SYSTEM_END},
+        PARTITION_SYSTEM_PRESTREAM: {
+            _FILE_START,
+            _PARTITION_START,
+            PARTITION_SYSTEM_POSTSTREAM,
+        },
+        PARTITION_POSTSTREAM: {_PARTITION_END},
+        PARTITION_PRESTREAM: {
+            _PARTITION_START,
+            _PARTITION_SYSTEM_START,
+            _VOLUME_START,
+            _FILE_START,
+            PARTITION_POSTSTREAM,
+        },
+        VOLUME_POSTSTREAM: {_VOLUME_END},
+        VOLUME_PRESTREAM: {
+            _DISK_IMAGE_START,
+            _VOLUME_START,
+            _FILE_START,
+            VOLUME_POSTSTREAM,
+        },
     }
 
     def __init__(self):
@@ -4888,11 +4936,11 @@ class Parser(object):
         self._state = Parser._INPUT_START
 
     def iterparse(
-      self,
-      fh: typing.IO[bytes],
-      events : typing.Iterable[str] = ("start","end"),
-      *,
-      dfxmlobject : typing.Optional[DFXMLObject] = None
+        self,
+        fh: typing.IO[bytes],
+        events: typing.Iterable[str] = ("start", "end"),
+        *,
+        dfxmlobject: typing.Optional[DFXMLObject] = None,
     ) -> typing.Iterator[typing.Tuple[str, AbstractObject]]:
         self.dobj = dfxmlobject or DFXMLObject()
 
@@ -4901,10 +4949,10 @@ class Parser(object):
             self.iterparse_events.add(event)
 
         # Throughout this loop, "eop" stands for "(event, object) pair."
-        for (ETevent, elem) in ET.iterparse(fh, events=("start-ns", "start", "end")):
+        for ETevent, elem in ET.iterparse(fh, events=("start-ns", "start", "end")):
             # View the object event stream in debug mode.
-            #_logger.debug("(event, elem) = (%r, %r)" % (ETevent, elem))
-            #if ETevent in ("start", "end"):
+            # _logger.debug("(event, elem) = (%r, %r)" % (ETevent, elem))
+            # if ETevent in ("start", "end"):
             #    _logger.debug("_ET_tostring(elem) = %r" % _ET_tostring(elem))
 
             # Track namespaces.
@@ -4918,30 +4966,42 @@ class Parser(object):
 
             if ETevent == "start":
                 if ln == "dfxml":
-                    for eop in self.transition(Parser._DFXML_START): yield eop
+                    for eop in self.transition(Parser._DFXML_START):
+                        yield eop
                     for k in elem.attrib:
                         # Note that xmlns declarations don't appear in elem.attrib.
                         self.proxy_element_stack[-1].attrib[k] = elem.attrib[k]
-                    for eop in self.transition(Parser.DFXML_PRESTREAM): yield eop
+                    for eop in self.transition(Parser.DFXML_PRESTREAM):
+                        yield eop
                 elif ln == "metadata":
                     # This transition is to resolve an ambiguity in handling external-namespace elements in the DFXML_PRESTREAM state.
-                    for eop in self.transition(Parser._DFXML_METADATA_START): yield eop
+                    for eop in self.transition(Parser._DFXML_METADATA_START):
+                        yield eop
                 elif ln == "diskimageobject":
-                    for eop in self.transition(Parser._DISK_IMAGE_START): yield eop
-                    for eop in self.transition(Parser.DISK_IMAGE_PRESTREAM): yield eop
+                    for eop in self.transition(Parser._DISK_IMAGE_START):
+                        yield eop
+                    for eop in self.transition(Parser.DISK_IMAGE_PRESTREAM):
+                        yield eop
                 elif ln == "partitionsystemobject":
-                    for eop in self.transition(Parser._PARTITION_SYSTEM_START): yield eop
-                    for eop in self.transition(Parser.PARTITION_SYSTEM_PRESTREAM): yield eop
+                    for eop in self.transition(Parser._PARTITION_SYSTEM_START):
+                        yield eop
+                    for eop in self.transition(Parser.PARTITION_SYSTEM_PRESTREAM):
+                        yield eop
                 elif ln == "partitionobject":
-                    for eop in self.transition(Parser._PARTITION_START): yield eop
-                    for eop in self.transition(Parser.PARTITION_PRESTREAM): yield eop
+                    for eop in self.transition(Parser._PARTITION_START):
+                        yield eop
+                    for eop in self.transition(Parser.PARTITION_PRESTREAM):
+                        yield eop
                 elif ln == "volume":
-                    for eop in self.transition(Parser._VOLUME_START): yield eop
+                    for eop in self.transition(Parser._VOLUME_START):
+                        yield eop
                     for k in elem.attrib:
                         self.proxy_element_stack[-1].attrib[k] = elem.attrib[k]
-                    for eop in self.transition(Parser.VOLUME_PRESTREAM): yield eop
+                    for eop in self.transition(Parser.VOLUME_PRESTREAM):
+                        yield eop
                 elif ln == "fileobject":
-                    for eop in self.transition(Parser._FILE_START): yield eop
+                    for eop in self.transition(Parser._FILE_START):
+                        yield eop
                     # All other work happens at the fileobject's end event.
                 else:
                     pass
@@ -4950,13 +5010,14 @@ class Parser(object):
                 if ns == dfxml.XMLNS_DFXML:
                     # If-branches listed here in reverse-depth order (starting with most frequent "leaf" objects of object tree); followed by a "misc" branch for high-level metadata elements.
                     if ln == "fileobject":
-                        for eop in self.transition(Parser._FILE_END): yield eop
+                        for eop in self.transition(Parser._FILE_END):
+                            yield eop
                         # No need to use the proxy element stack for file objects.  Handle emitting here.
                         fobj = FileObject()
                         fobj.populate_from_Element(elem)
                         if isinstance(self.object_stack[-1], VolumeObject):
                             fobj.volume_object = self.object_stack[-1]
-                        #_logger.debug("fi = %r" % fobj)
+                        # _logger.debug("fi = %r" % fobj)
                         if "end" in self.iterparse_events:
                             yield ("end", fobj)
                         # Reset.
@@ -4965,60 +5026,81 @@ class Parser(object):
                     elif ln == "volume":
                         # A transition through the VOLUME_POSTSTREAM state may have to be inferred, if there were no poststream elements (such as 'error').
                         if not self.state == Parser.VOLUME_POSTSTREAM:
-                            for eop in self.transition(Parser.VOLUME_POSTSTREAM): yield eop
-                        for eop in self.transition(Parser._VOLUME_END): yield eop
+                            for eop in self.transition(Parser.VOLUME_POSTSTREAM):
+                                yield eop
+                        for eop in self.transition(Parser._VOLUME_END):
+                            yield eop
                         elem.clear()
                         elem_handled = True
                     elif ln == "partitionobject":
                         # A transition through the PARTITION_POSTSTREAM state may have to be inferred.
                         if not self.state == Parser.PARTITION_POSTSTREAM:
-                            for eop in self.transition(Parser.PARTITION_POSTSTREAM): yield eop
-                        for eop in self.transition(Parser._PARTITION_END): yield eop
+                            for eop in self.transition(Parser.PARTITION_POSTSTREAM):
+                                yield eop
+                        for eop in self.transition(Parser._PARTITION_END):
+                            yield eop
                         elem.clear()
                         elem_handled = True
                     elif ln == "partitionsystemobject":
                         # A transition through the PARTITION_SYSTEM_POSTSTREAM state may have to be inferred, if there were no poststream elements (such as 'error').
                         if not self.state == Parser.PARTITION_SYSTEM_POSTSTREAM:
-                            for eop in self.transition(Parser.PARTITION_SYSTEM_POSTSTREAM): yield eop
-                        for eop in self.transition(Parser._PARTITION_SYSTEM_END): yield eop
+                            for eop in self.transition(
+                                Parser.PARTITION_SYSTEM_POSTSTREAM
+                            ):
+                                yield eop
+                        for eop in self.transition(Parser._PARTITION_SYSTEM_END):
+                            yield eop
                         elem.clear()
                         elem_handled = True
                     elif ln == "diskimageobject":
                         # A transition through the DISK_IMAGE_POSTSTREAM state may have to be inferred.
                         if not self.state == Parser.DISK_IMAGE_POSTSTREAM:
-                            for eop in self.transition(Parser.DISK_IMAGE_POSTSTREAM): yield eop
-                        for eop in self.transition(Parser._DISK_IMAGE_END): yield eop
+                            for eop in self.transition(Parser.DISK_IMAGE_POSTSTREAM):
+                                yield eop
+                        for eop in self.transition(Parser._DISK_IMAGE_END):
+                            yield eop
                         elem.clear()
                         elem_handled = True
                     elif ln == "metadata":
-                        for eop in self.transition(Parser._DFXML_METADATA_END): yield eop
+                        for eop in self.transition(Parser._DFXML_METADATA_END):
+                            yield eop
                         self.proxy_element_stack[0].append(elem)
-                        for eop in self.transition(Parser.DFXML_PRESTREAM): yield eop
+                        for eop in self.transition(Parser.DFXML_PRESTREAM):
+                            yield eop
                         # Note there is intentionally not an elem.clear() here.
                         elem_handled = True
                     elif ln == "dfxml":
                         # A transition through the DFXML_POSTSTREAM state may have to be inferred, if there were no poststream elements (such as 'error').
                         if not self.state == Parser.DFXML_POSTSTREAM:
-                            for eop in self.transition(Parser.DFXML_POSTSTREAM): yield eop
-                        for eop in self.transition(Parser._DFXML_END): yield eop
+                            for eop in self.transition(Parser.DFXML_POSTSTREAM):
+                                yield eop
+                        for eop in self.transition(Parser._DFXML_END):
+                            yield eop
                         elem.clear()
                         elem_handled = True
                     elif ln == "error":
-                        #_logger.debug("ns = %r." % ns)
+                        # _logger.debug("ns = %r." % ns)
                         # The error element can be the child of a file or a container.  The schema allows the error element after the potentially long child-element streams in containers.  Transition to that container's post-stream state.
                         if self.state == Parser._FILE_START:
                             continue
 
                         if isinstance(self.object_stack[-1], DFXMLObject):
-                            for eop in self.transition(Parser.DFXML_POSTSTREAM): yield eop
+                            for eop in self.transition(Parser.DFXML_POSTSTREAM):
+                                yield eop
                         elif isinstance(self.object_stack[-1], DiskImageObject):
-                            for eop in self.transition(Parser.DISK_IMAGE_POSTSTREAM): yield eop
+                            for eop in self.transition(Parser.DISK_IMAGE_POSTSTREAM):
+                                yield eop
                         elif isinstance(self.object_stack[-1], PartitionSystemObject):
-                            for eop in self.transition(Parser.PARTITION_SYSTEM_POSTSTREAM): yield eop
+                            for eop in self.transition(
+                                Parser.PARTITION_SYSTEM_POSTSTREAM
+                            ):
+                                yield eop
                         elif isinstance(self.object_stack[-1], PartitionObject):
-                            for eop in self.transition(Parser.PARTITION_POSTSTREAM): yield eop
+                            for eop in self.transition(Parser.PARTITION_POSTSTREAM):
+                                yield eop
                         elif isinstance(self.object_stack[-1], VolumeObject):
-                            for eop in self.transition(Parser.VOLUME_POSTSTREAM): yield eop
+                            for eop in self.transition(Parser.VOLUME_POSTSTREAM):
+                                yield eop
 
                         if self.in_poststream_state():
                             # The created object should be updated with a manual call.  This is likely not the most elegant approach, as the implied code maintenance is needing to review the schema for elements that can occur after child streams; but, it saves an accidental object reinstantiation.
@@ -5032,21 +5114,21 @@ class Parser(object):
                 # Branches after here have to reason based on the parse self.state value.
                 if not elem_handled:
                     if self.state in {
-                      Parser.DFXML_PRESTREAM,
-                      Parser.DISK_IMAGE_PRESTREAM,
-                      Parser.PARTITION_SYSTEM_PRESTREAM,
-                      Parser.PARTITION_PRESTREAM,
-                      Parser.VOLUME_PRESTREAM
+                        Parser.DFXML_PRESTREAM,
+                        Parser.DISK_IMAGE_PRESTREAM,
+                        Parser.PARTITION_SYSTEM_PRESTREAM,
+                        Parser.PARTITION_PRESTREAM,
+                        Parser.VOLUME_PRESTREAM,
                     }:
                         self.proxy_element_stack[-1].append(elem)
 
     def in_poststream_state(self):
         return self.state in {
-          Parser.DFXML_POSTSTREAM,
-          Parser.DISK_IMAGE_POSTSTREAM,
-          Parser.PARTITION_SYSTEM_POSTSTREAM,
-          Parser.PARTITION_POSTSTREAM,
-          Parser.VOLUME_POSTSTREAM
+            Parser.DFXML_POSTSTREAM,
+            Parser.DISK_IMAGE_POSTSTREAM,
+            Parser.PARTITION_SYSTEM_POSTSTREAM,
+            Parser.PARTITION_POSTSTREAM,
+            Parser.VOLUME_POSTSTREAM,
         }
 
     def transition(self, to_state):
@@ -5057,12 +5139,15 @@ class Parser(object):
         retval = []
 
         if not to_state in Parser.transitions[self.state]:
-            raise ValueError("DFXML stream has unexpected state transition: %r -> %r." % (self.state, to_state))
+            raise ValueError(
+                "DFXML stream has unexpected state transition: %r -> %r."
+                % (self.state, to_state)
+            )
         from_state = self.state
         self.state = to_state
 
-        #_logger.debug("_transition:from_state = %r." % from_state)
-        #_logger.debug("_transition:to_state = %r." % to_state)
+        # _logger.debug("_transition:from_state = %r." % from_state)
+        # _logger.debug("_transition:to_state = %r." % to_state)
 
         # Handle transitioning away from old state.  Mostly, this is emitting start events for Objects that have potentially large streams of child objects.
         if from_state == Parser.DFXML_PRESTREAM:
@@ -5091,7 +5176,9 @@ class Parser(object):
         # Handle transitioning to new state.
         if to_state == Parser._DFXML_START:
             if from_state != Parser._INPUT_START:
-                raise ValueError("Encountered a <dfxml> element, but the parser isn't in its start state.  Recursive <dfxml> declarations aren't supported at this time.")
+                raise ValueError(
+                    "Encountered a <dfxml> element, but the parser isn't in its start state.  Recursive <dfxml> declarations aren't supported at this time."
+                )
             self.object_stack.append(self.dobj)
             el = ET.Element("dfxml")
             self.proxy_element_stack.append(el)
@@ -5188,12 +5275,13 @@ class Parser(object):
         _typecheck(value, int)
         self._state = value
 
+
 def iterparse(
-  filename : str,
-  events : typing.Tuple[str, ...] = ("start","end"),
-  *,
-  dfxmlobject : typing.Optional[DFXMLObject] = None,
-  fiwalk : typing.Optional[str] = None
+    filename: str,
+    events: typing.Tuple[str, ...] = ("start", "end"),
+    *,
+    dfxmlobject: typing.Optional[DFXMLObject] = None,
+    fiwalk: typing.Optional[str] = None,
 ) -> typing.Iterator[typing.Tuple[str, AbstractObject]]:
     """
     Generator.  Yields a stream of populated DFXMLObjects, VolumeObjects and FileObjects, paired with an event type ("start" or "end").  The DFXMLObject and VolumeObjects do NOT have their child lists populated with this method - that is left to the calling program.
@@ -5207,7 +5295,7 @@ def iterparse(
     """
 
     # The DFXML stream file handle.
-    fh : typing.IO[bytes]
+    fh: typing.IO[bytes]
 
     subp = None
     fiwalk_path = fiwalk or "fiwalk"
@@ -5224,23 +5312,25 @@ def iterparse(
 
     _events = set()
     for e in events:
-        if not e in ("start","end"):
-            raise ValueError("Unexpected event type: %r.  Expecting 'start', 'end'." % e)
+        if not e in ("start", "end"):
+            raise ValueError(
+                "Unexpected event type: %r.  Expecting 'start', 'end'." % e
+            )
         _events.add(e)
 
     parser = Parser()
-    for (event, obj) in parser.iterparse(fh, _events, dfxmlobject=dfxmlobject):
+    for event, obj in parser.iterparse(fh, _events, dfxmlobject=dfxmlobject):
         yield (event, obj)
 
     # If we called Fiwalk, double-check that it exited successfully.
     if not subp is None:
-        _logger.debug("Calling wait() to let the Fiwalk subprocess terminate...") # Just reading from subp.stdout doesn't let the process terminate; it only finishes working.
+        _logger.debug(
+            "Calling wait() to let the Fiwalk subprocess terminate..."
+        )  # Just reading from subp.stdout doesn't let the process terminate; it only finishes working.
         subp.wait()
         if subp.returncode != 0:
             error_object = subprocess.CalledProcessError(
-              subp.returncode,
-              subp_command,
-              "There was an error running Fiwalk."
+                subp.returncode, subp_command, "There was an error running Fiwalk."
             )
             raise error_object
         _logger.debug("...Done.")
@@ -5248,56 +5338,57 @@ def iterparse(
     if need_cleanup:
         fh.close()
 
-def parse(
-  filename : str
-) -> DFXMLObject:
+
+def parse(filename: str) -> DFXMLObject:
     """
     Returns a DFXMLObject populated from the contents of the (string) filename argument.
     Internally, this function uses iterparse().  One key operational difference is this function also appends child objects emitted by iterparse() to parent objects; iterparse() does not handle parent-child relationships.
     """
-    object_stack : typing.List[AbstractParentObject] = []
+    object_stack: typing.List[AbstractParentObject] = []
 
-    for (event, obj) in iterparse(filename):
-        #_logger.debug("(event, type(obj)) = %r." % ((event, type(obj)),))
+    for event, obj in iterparse(filename):
+        # _logger.debug("(event, type(obj)) = %r." % ((event, type(obj)),))
         if event == "start":
             if isinstance(obj, DFXMLObject):
                 object_stack.append(obj)
-            elif isinstance(obj, (
-              DiskImageObject,
-              PartitionSystemObject,
-              PartitionObject,
-              VolumeObject
-            )):
-                #_logger.debug("Adding to stack a %r." % type(obj))
+            elif isinstance(
+                obj,
+                (DiskImageObject, PartitionSystemObject, PartitionObject, VolumeObject),
+            ):
+                # _logger.debug("Adding to stack a %r." % type(obj))
                 object_stack[-1].append(obj)
                 object_stack.append(obj)
             else:
-                raise NotImplementedError("parse:Unexpected object type with start-event: %r." % type(obj))
-            #_logger.debug("Pushed onto object stack a %r." % type(obj))
+                raise NotImplementedError(
+                    "parse:Unexpected object type with start-event: %r." % type(obj)
+                )
+            # _logger.debug("Pushed onto object stack a %r." % type(obj))
         elif event == "end":
             if isinstance(obj, DFXMLObject):
                 # Let object_stack retain bottom DFXMLObject.
                 pass
-            elif isinstance(obj, (
-              DiskImageObject,
-              PartitionSystemObject,
-              PartitionObject,
-              VolumeObject
-            )):
+            elif isinstance(
+                obj,
+                (DiskImageObject, PartitionSystemObject, PartitionObject, VolumeObject),
+            ):
                 popped = object_stack.pop()
-                #_logger.debug("Popped from object stack a %r." % type(popped))
+                # _logger.debug("Popped from object stack a %r." % type(popped))
             elif isinstance(obj, FileObject):
                 object_stack[-1].append(obj)
             else:
-                raise NotImplementedError("parse:Unexpected object type with end-event: %r." % type(obj))
+                raise NotImplementedError(
+                    "parse:Unexpected object type with end-event: %r." % type(obj)
+                )
 
-    #_logger.debug("len(object_stack) = %d." % len(object_stack))
+    # _logger.debug("len(object_stack) = %d." % len(object_stack))
     if len(object_stack) == 0:
         raise ValueError("Failed to parse DFXML data from file: %r." % filename)
 
     bottom_object = object_stack[0]
     if not isinstance(bottom_object, DFXMLObject):
         # TODO - There might be use cases that call for .parse() to handle files that contain, say, only a <fileobject> as its root.  This is left for future work, as there might be complexities with the schema.
-        raise NotImplementedError("The parse() function expects to operate on files with a root element of <dfxml>.")
+        raise NotImplementedError(
+            "The parse() function expects to operate on files with a root element of <dfxml>."
+        )
 
     return bottom_object

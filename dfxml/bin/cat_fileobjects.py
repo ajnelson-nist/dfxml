@@ -17,28 +17,32 @@
 Make a new DFXML file of all fileobjects in an input DFXML file.
 """
 
-__version__ = "0.3.1"
+__version__ = "0.4.0"
 
-import sys
-import xml.etree.ElementTree as ET
-import dfxml
 import logging
 import os
+import sys
+import xml.etree.ElementTree as ET
+
+import dfxml
 
 _logger = logging.getLogger(os.path.basename(__file__))
 
 if sys.version < "3":
-    _logger.error("Due to Unicode issues with Python 2's ElementTree, Python 3 and up is required.\n")
+    _logger.error(
+        "Due to Unicode issues with Python 2's ElementTree, Python 3 and up is required.\n"
+    )
     exit(1)
 
-def main():
 
-    print("""\
+def main():
+    print(
+        """\
 <?xml version="1.0" encoding="UTF-8"?>
 <dfxml
   xmlns="%s"
   xmlns:delta="%s"
-  version="1.2.0">
+  version="%s">
   <metadata/>
   <creator>
     <program>%s</program>
@@ -50,12 +54,24 @@ def main():
   <source>
     <image_filename>%s</image_filename>
   </source>\
-""" % (dfxml.XMLNS_DFXML, dfxml.XMLNS_DELTA, sys.argv[0], __version__, " ".join(sys.argv), args.filename))
+"""
+        % (
+            dfxml.XMLNS_DFXML,
+            dfxml.XMLNS_DELTA,
+            dfxml.DFXML_VERSION,
+            sys.argv[0],
+            __version__,
+            " ".join(sys.argv),
+            args.filename,
+        )
+    )
 
     ET.register_namespace("delta", dfxml.XMLNS_DELTA)
 
     xs = []
-    for fi in dfxml.iter_dfxml(xmlfile=open(args.filename, "rb"), preserve_elements=True):
+    for fi in dfxml.iter_dfxml(
+        xmlfile=open(args.filename, "rb"), preserve_elements=True
+    ):
         _logger.debug("Processing: %s" % str(fi))
         if args.cache:
             xs.append(fi.xml_element)
@@ -69,8 +85,10 @@ def main():
 
     print("""</dfxml>""")
 
+
 if __name__ == "__main__":
     import argparse
+
     parser = argparse.ArgumentParser()
     parser.add_argument("filename")
     parser.add_argument("--cache", action="store_true")

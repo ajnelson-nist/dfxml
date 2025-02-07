@@ -6,19 +6,24 @@
 name: CI (python)
 on: [push, pull_request]
 
+env:
+  COVERAGE_OS: ubuntu-latest
+  COVERAGE_PYTHON_VERSION: 3.12
+
 jobs:
   build:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: ['ubuntu-20.04', 'macos-10.15']
-        python-version: [3.8, 3.9]
+        os: ['ubuntu-latest', 'macos-latest']
+        python-version: ['3.8','3.12']
+
     steps:
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v1
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -35,6 +40,11 @@ jobs:
           sudo apt update
           sudo apt install --yes libxml2-utils
 
+      - name: Pre-commit Checks
+        run: |
+          pip -q install pre-commit
+          pre-commit run --all-files
+
       - name: Make check
         run: make check
 
@@ -42,4 +52,12 @@ jobs:
         run: make check-tools
 
       - name: Test with pytest
-        run: PYTHONPATH=./bin pytest --cov=./ --cov-report=xml dfxml
+        run: pytest --cov=dfxml --cov-report=xml .
+
+      - name: Upload to codecov.io
+        if: matrix.os == env.COVERAGE_OS && matrix.python-version == env.COVERAGE_PYTHON_VERSION
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          verbose: true
+          files: ./coverage.xml
