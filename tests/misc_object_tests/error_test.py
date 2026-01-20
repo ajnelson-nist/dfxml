@@ -40,7 +40,7 @@ def test_volume_error_roundtrip_without_file():
     assert vobj.error == ERROR_STRING_V
 
     # Do file I/O round trip.
-    (tmp_filename, dobj_reconst) = libtest.file_round_trip_dfxmlobject(dobj)
+    tmp_filename, dobj_reconst = libtest.file_round_trip_dfxmlobject(dobj)
     try:
         vobj_reconst = dobj_reconst.volumes[0]
         assert vobj_reconst.error == ERROR_STRING_V
@@ -60,7 +60,7 @@ def test_file_error_roundtrip():
     assert fobj.error == ERROR_STRING_F
 
     # Do file I/O round trip.
-    (tmp_filename, dobj_reconst) = libtest.file_round_trip_dfxmlobject(dobj)
+    tmp_filename, dobj_reconst = libtest.file_round_trip_dfxmlobject(dobj)
     try:
         fobj_reconst = dobj_reconst.files[0]
         assert fobj_reconst.error == ERROR_STRING_F
@@ -88,7 +88,7 @@ def test_volume_error_roundtrip_with_file():
     assert vobj.error == ERROR_STRING_V
 
     # Do file I/O round trip.
-    (tmp_filename, dobj_reconst) = libtest.file_round_trip_dfxmlobject(dobj)
+    tmp_filename, dobj_reconst = libtest.file_round_trip_dfxmlobject(dobj)
     try:
         vobj_reconst = dobj_reconst.volumes[0]
         fobj_reconst = vobj_reconst.files[0]
@@ -130,7 +130,7 @@ def test_volume_error_roundtrip_with_file_and_extns():
     assert vobj.error == ERROR_STRING_V
 
     # Do file I/O round trip.
-    (tmp_filename, dobj_reconst) = libtest.file_round_trip_dfxmlobject(dobj)
+    tmp_filename, dobj_reconst = libtest.file_round_trip_dfxmlobject(dobj)
     try:
         vobj_reconst = dobj_reconst.volumes[0]
         fobj_reconst = vobj_reconst.files[0]

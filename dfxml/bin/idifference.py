@@ -502,8 +502,7 @@ class DiskState:
         metadict["currentf"] = self.current_fname
 
         xmlfile = open(options.xmlfilename, "w")
-        xmlfile.write(
-            """\
+        xmlfile.write("""\
 <?xml version="1.0" encoding="UTF-8"?>
 <dfxml
   version="%(DFXML_VERSION)s"
@@ -525,9 +524,7 @@ class DiskState:
     <image_filename>%(priorf)s</image_filename>
     <image_filename>%(currentf)s</image_filename>
   </source>
-"""
-            % metadict
-        )
+""" % metadict)
 
         def _annotate_changes(tmpel, ofi, fi):
             """
@@ -806,7 +803,7 @@ if __name__ == "__main__":
         "--noatime", help="Do not include atime changes", action="store_true"
     )
 
-    (options, args) = parser.parse_args()
+    options, args = parser.parse_args()
 
     logging.basicConfig(level=logging.DEBUG if options.debug else logging.INFO)
 

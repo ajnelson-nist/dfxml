@@ -326,7 +326,7 @@ def make_differential_dfxml(
         old_inode_names = _make_name_map(old_fis)
         new_inode_names = _make_name_map(new_fis)
         for new_inode_name_key in new_inode_names.keys():
-            (partition, inode) = new_inode_name_key
+            partition, inode = new_inode_name_key
 
             if len(new_inode_names[new_inode_name_key]) != 1:
                 continue
@@ -383,7 +383,7 @@ def make_differential_dfxml(
         for name_inode_key in new_name_inodes.keys():
             if not name_inode_key in old_name_inodes:
                 continue
-            (partition, name) = name_inode_key
+            partition, name = name_inode_key
             old_fobj = old_fis.pop((partition, old_name_inodes[name_inode_key], name))
             new_obj = new_fis.pop((partition, new_name_inodes[name_inode_key], name))
             new_obj.original_fileobject = old_fobj

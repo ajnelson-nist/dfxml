@@ -423,7 +423,7 @@ def main():
         action="store_true",
     )
 
-    (options, args) = parser.parse_args()
+    options, args = parser.parse_args()
 
     if len(args) < 1:
         parser.print_help()

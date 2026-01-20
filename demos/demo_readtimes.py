@@ -50,7 +50,7 @@ if __name__ == "__main__":
     parser.add_option("-x", "--xmlfile", help="XML file (optional)")
     parser.add_option("-i", "--imagefile", help="image file (required)")
     parser.usage = "%prog [options] xmlfile diskimage"
-    (options, args) = parser.parse_args()
+    options, args = parser.parse_args()
 
     if not options.xmlfile or not options.imagefile:
         parser.print_help()

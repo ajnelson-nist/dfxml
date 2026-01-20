@@ -134,7 +134,7 @@ def test_prefixed_externals_round_trip():
         vobj.externals.append(e)
 
     # Do file I/O round trip.
-    (tmp_filename, dobj_reconst) = libtest.file_round_trip_dfxmlobject(dobj)
+    tmp_filename, dobj_reconst = libtest.file_round_trip_dfxmlobject(dobj)
     vobj_reconst = dobj_reconst.volumes[0]
     try:
         assert len(vobj_reconst.externals) == 2

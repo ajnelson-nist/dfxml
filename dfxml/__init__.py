@@ -712,7 +712,7 @@ class fileobject:
         """Extension, as a lowercase string without the leading '.'"""
         import string
 
-        (base, ext) = os.path.splitext(self.filename())
+        base, ext = os.path.splitext(self.filename())
         if ext == "":
             return None
         else:
@@ -950,7 +950,7 @@ class fileobject:
                             imagefile.name,
                             str(inode),
                         ]
-                    (data, err) = Popen(cmd, stdout=PIPE, stderr=PIPE).communicate()
+                    data, err = Popen(cmd, stdout=PIPE, stderr=PIPE).communicate()
                     # Check for an error
                     if len(err) > 0:
                         # sys.stderr.write("Debug: type(err) = %r.\n" % type(err))

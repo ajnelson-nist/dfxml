@@ -31,7 +31,7 @@ def should_redact(fi):
     if fi.filename() in redact_filenames:
         return True
     fnl = fi.filename().lower()
-    (root, ext) = os.path.splitext(fnl)
+    root, ext = os.path.splitext(fnl)
     if options.debug:
         print(
             "\r",
@@ -141,7 +141,7 @@ if __name__ == "__main__":
         "-c", "--commit", help="Really do the redaction", action="store_true"
     )
     parser.add_option("--all", help="Do all", action="store_true")
-    (options, args) = parser.parse_args()
+    options, args = parser.parse_args()
 
     # First read all of the redaction files
     for fn in glob("*redacted.xml*"):

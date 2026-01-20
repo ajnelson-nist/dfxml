@@ -3,6 +3,7 @@
 
 Reports the files in which sectors s1, s2, s3... are located.
 """
+
 import sys
 
 import dfxml
@@ -16,7 +17,7 @@ if __name__ == "__main__":
         "--offset", help="values are byte offsets, not sectors", action="store_true"
     )
     parser.add_option("--blocksize", help="specify sector blockszie", default=512)
-    (options, args) = parser.parse_args()
+    options, args = parser.parse_args()
 
     if len(args) < 1:
         parser.print_help()

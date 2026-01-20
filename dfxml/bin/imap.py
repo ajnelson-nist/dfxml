@@ -5,6 +5,7 @@ Produces a map of imagefile0.iso, using the other image files as "hints" for mis
 data. Only reports files that have been allocated; deleted files are reported only if
 they can be found allocated in another file.
 """
+
 import dfxml.fiwalk as fiwalk
 
 ################################################################
@@ -16,7 +17,7 @@ if __name__ == "__main__":
     parser = OptionParser()
     parser.usage = "%prog [options] image.iso "
     parser.add_option("-d", "--debug", help="debug", action="store_true")
-    (options, args) = parser.parse_args()
+    options, args = parser.parse_args()
 
     if len(args) < 1:
         parser.print_help()

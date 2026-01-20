@@ -128,7 +128,7 @@ if __name__ == "__main__":
 
     parser = OptionParser()
     parser.usage = "%prog [options] xmlfile "
-    (options, args) = parser.parse_args()
+    options, args = parser.parse_args()
 
     import time
 

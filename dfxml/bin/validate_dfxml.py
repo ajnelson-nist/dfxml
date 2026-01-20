@@ -9,7 +9,7 @@ import dfxml.fiwalk as fiwalk
 def demo_dfxml_time_bug(filename):
     parser = OptionParser()
     parser.usage = "%prog% [options] xmlfile "
-    (options, args) = parser.parse_args()
+    options, args = parser.parse_args()
     for fi in fiwalk.fileobjects_using_sax(xmlfile=open(filename, "rb")):
         fsize = fi.filesize()
         try:

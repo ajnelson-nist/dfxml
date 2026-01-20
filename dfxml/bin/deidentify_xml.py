@@ -55,7 +55,7 @@ def sanitize_filename(fname):
         # and the name up to the .ext
         parts = fname.split("/")
         parts[:-1] = [sanitize_part(s) for s in parts[:-1]]
-        (root, ext) = os.path.splitext(parts[-1])
+        root, ext = os.path.splitext(parts[-1])
         if ext not in acceptable_extensions:
             parts[-1] = sanitize_part(root) + ext
         fname = "/".join(parts)
@@ -114,7 +114,7 @@ if __name__ == "__main__":
     global options
     parser = OptionParser()
     parser.add_option("-t", "--test", help="Test a specific pathanme to sanitize")
-    (options, args) = parser.parse_args()
+    options, args = parser.parse_args()
 
     if options.test:
         if os.path.isdir(options.test):

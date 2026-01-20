@@ -63,7 +63,6 @@ Other actions in file:
 KEY 12342343  (an encryption key)
 """
 
-
 import hashlib
 import os.path
 import re
@@ -185,7 +184,7 @@ class redact_rule_string(redact_rule):
         ret = []
         tlen = len(self.text)
         for run in fi.byte_runs():
-            (file_offset, run_len, img_offset) = run
+            file_offset, run_len, img_offset = run
 
             run_content = fi.content_for_run(run)
             offset = 0
@@ -462,7 +461,7 @@ if __name__ == "__main__":
     parser = OptionParser()
     parser.usage = "%prog [options] config-file"
     parser.add_option("-d", "--debug", help="prints debugging info", dest="debug")
-    (options, args) = parser.parse_args()
+    options, args = parser.parse_args()
 
     t0 = time.time()
     # Read the redaction configuration file

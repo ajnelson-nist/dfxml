@@ -35,7 +35,7 @@ def test_empty_object():
     dobj.append(diobj)
 
     # Do file I/O round trip.
-    (tmp_filename, dobj_reconst) = libtest.file_round_trip_dfxmlobject(dobj)
+    tmp_filename, dobj_reconst = libtest.file_round_trip_dfxmlobject(dobj)
     try:
         diobj_reconst = dobj_reconst.disk_images[0]
     except:
@@ -52,7 +52,7 @@ def test_sector_size():
     diobj.sector_size = 2048
 
     # Do file I/O round trip.
-    (tmp_filename, dobj_reconst) = libtest.file_round_trip_dfxmlobject(dobj)
+    tmp_filename, dobj_reconst = libtest.file_round_trip_dfxmlobject(dobj)
     try:
         diobj_reconst = dobj_reconst.disk_images[0]
         assert diobj_reconst.sector_size == 2048
@@ -71,7 +71,7 @@ def test_error():
     diobj.error = ERROR_1
 
     # Do file I/O round trip.
-    (tmp_filename, dobj_reconst) = libtest.file_round_trip_dfxmlobject(dobj)
+    tmp_filename, dobj_reconst = libtest.file_round_trip_dfxmlobject(dobj)
     try:
         diobj_reconst = dobj_reconst.disk_images[0]
         assert diobj_reconst.error == ERROR_1
@@ -93,7 +93,7 @@ def test_error_after_partition_system():
     diobj.append(psobj)
 
     # Do file I/O round trip.
-    (tmp_filename, dobj_reconst) = libtest.file_round_trip_dfxmlobject(dobj)
+    tmp_filename, dobj_reconst = libtest.file_round_trip_dfxmlobject(dobj)
     try:
         diobj_reconst = dobj_reconst.disk_images[0]
         psobj_reconst = diobj_reconst.partition_systems[0]
@@ -117,7 +117,7 @@ def test_error_after_file_system():
     diobj.append(vobj)
 
     # Do file I/O round trip.
-    (tmp_filename, dobj_reconst) = libtest.file_round_trip_dfxmlobject(dobj)
+    tmp_filename, dobj_reconst = libtest.file_round_trip_dfxmlobject(dobj)
     try:
         diobj_reconst = dobj_reconst.disk_images[0]
         vobj_reconst = diobj_reconst.volumes[0]
@@ -144,7 +144,7 @@ def test_error_after_file():
     diobj.append(fobj)
 
     # Do file I/O round trip.
-    (tmp_filename, dobj_reconst) = libtest.file_round_trip_dfxmlobject(dobj)
+    tmp_filename, dobj_reconst = libtest.file_round_trip_dfxmlobject(dobj)
     try:
         diobj_reconst = dobj_reconst.disk_images[0]
         fobj_reconst = diobj_reconst.files[0]

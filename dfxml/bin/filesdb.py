@@ -33,7 +33,7 @@ class filesdb:
 
     def read_with_prefix(self, fname):
         if ":" in fname:
-            (fmt, fname) = fname.split(":")
+            fmt, fname = fname.split(":")
             if fmt[0] == "+":
                 self.prefix = fmt[1:]
             if fmt[0] == "=":

@@ -94,7 +94,7 @@ def _gen_glom_samples(offset_property="img_offset"):
 
 def test_glomming_simple():
     for offset_property in ["img_offset", "fs_offset", "file_offset"]:
-        (br0, br1, br2) = _gen_glom_samples(offset_property)
+        br0, br1, br2 = _gen_glom_samples(offset_property)
         br0_br0 = br0 + br0
         br0_br1 = br0 + br1
         br0_br2 = br0 + br2
@@ -225,7 +225,7 @@ def test_glom_fragmented_file_discontiguous():
 
 
 def test_glomming_fill():
-    (br0, br1, br2) = _gen_glom_samples()
+    br0, br1, br2 = _gen_glom_samples()
 
     br0.fill = b"\x00"
     br1.fill = b"\x01"
@@ -282,7 +282,7 @@ def test_hash_properties():
         assert getattr(br, hash_function) == hash_values[hash_function]
 
     # Do file I/O round trip.
-    (tmp_filename, dobj_reconst) = libtest.file_round_trip_dfxmlobject(dobj)
+    tmp_filename, dobj_reconst = libtest.file_round_trip_dfxmlobject(dobj)
     try:
         fobj_reconst = dobj_reconst.files[0]
         br_reconst = fobj_reconst.byte_runs[0]
@@ -296,7 +296,7 @@ def test_hash_properties():
 
 
 def test_glomming_hash():
-    (br0, br1, br2) = _gen_glom_samples()
+    br0, br1, br2 = _gen_glom_samples()
 
     hash_object = hashlib.sha512()
     hash_object.update(TEST_BYTE_STRING)

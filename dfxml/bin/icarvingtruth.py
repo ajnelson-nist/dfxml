@@ -146,7 +146,7 @@ if __name__ == "__main__":
         dest="reportfilename",
     )
     parser.add_option("-d", "--debug", help="debug")
-    (options, args) = parser.parse_args()
+    options, args = parser.parse_args()
 
     if len(args) < 1:
         parser.print_help()
@@ -157,7 +157,7 @@ if __name__ == "__main__":
     master_imagefile = open(masterfn, "r")
     db = dfxml.extentdb(sectorsize=512)
 
-    (doc, fileobjects) = fiwalk.fileobjects_using_dom(
+    doc, fileobjects = fiwalk.fileobjects_using_dom(
         imagefile=master_imagefile, flags=fiwalk.ALLOC_ONLY
     )
 
@@ -187,7 +187,7 @@ if __name__ == "__main__":
     for ref in refs:
         if options.debug:
             print("check files in ", ref)
-        (d2, fobj2) = fiwalk.fileobjects_using_dom(
+        d2, fobj2 = fiwalk.fileobjects_using_dom(
             imagefile=open(ref, "r"), flags=fiwalk.ALLOC_ONLY
         )
         for fi in fobj2:
@@ -205,7 +205,7 @@ if __name__ == "__main__":
         if options.debug:
             print("check residual data in ", ref)
         ref_imagefile = open(ref, "r")
-        (d2, fobj2) = fiwalk.fileobjects_using_dom(
+        d2, fobj2 = fiwalk.fileobjects_using_dom(
             imagefile=ref_imagefile, flags=fiwalk.ALLOC_ONLY
         )
         for fi in fobj2:

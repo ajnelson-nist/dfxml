@@ -32,7 +32,7 @@ def test_empty_object():
     dobj.append(vobj)
 
     # Do file I/O round trip.
-    (tmp_filename, dobj_reconst) = libtest.file_round_trip_dfxmlobject(dobj)
+    tmp_filename, dobj_reconst = libtest.file_round_trip_dfxmlobject(dobj)
     try:
         vobj_reconst = dobj_reconst.volumes[0]
     except:

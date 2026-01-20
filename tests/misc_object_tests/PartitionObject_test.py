@@ -32,7 +32,7 @@ def test_empty_object():
     dobj.append(pobj)
 
     # Do file I/O round trip.
-    (tmp_filename, dobj_reconst) = libtest.file_round_trip_dfxmlobject(dobj)
+    tmp_filename, dobj_reconst = libtest.file_round_trip_dfxmlobject(dobj)
     try:
         pobj_reconst = dobj_reconst.partitions[0]
     except:
@@ -53,7 +53,7 @@ def test_cfreds_macwd_properties():
     pobj.partition_index = 8
 
     # Do file I/O round trip.
-    (tmp_filename, dobj_reconst) = libtest.file_round_trip_dfxmlobject(dobj)
+    tmp_filename, dobj_reconst = libtest.file_round_trip_dfxmlobject(dobj)
     try:
         pobj_reconst = dobj_reconst.partitions[0]
         assert pobj_reconst.ptype_str == "Apple_Boot"
@@ -78,7 +78,7 @@ def test_bsd_disklabel_properties():
     pobj_c.partition_index = "c"
 
     # Do file I/O round trip.
-    (tmp_filename, dobj_reconst) = libtest.file_round_trip_dfxmlobject(dobj)
+    tmp_filename, dobj_reconst = libtest.file_round_trip_dfxmlobject(dobj)
     try:
         pobj_a_reconst = dobj_reconst.partitions[0]
         pobj_c_reconst = dobj_reconst.partitions[1]

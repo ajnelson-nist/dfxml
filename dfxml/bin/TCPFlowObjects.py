@@ -45,7 +45,7 @@ class TCPFlowScannerResult(object):
         self.flow_name = kwargs.get("flow_name")
 
     def populate_from_Element(self, el):
-        (ns, tn) = Objects._qsplit(el.tag)
+        ns, tn = Objects._qsplit(el.tag)
         if ns != XMLNS_TCPFLOW or tn != "scanner_result":
             raise ValueError(
                 "TCPFlowScannerResult needs to be instantiated from a {%s}scanner_result element."
@@ -71,7 +71,7 @@ class TCPFlowScannerResult_ZipGenericHeaderDetector(TCPFlowScannerResult):
             TCPFlowScannerResult_ZipGenericHeaderDetector, self
         ).populate_from_Element(el)
         for ce in el.findall("./*"):
-            (cns, ctn) = Objects._qsplit(ce.tag)
+            cns, ctn = Objects._qsplit(ce.tag)
             if ctn == "byte_runs":
                 self.byte_runs.populate_from_Element(ce)
             else:
@@ -93,7 +93,7 @@ def scanner_results_from_FileObject(fobj):
 
     # Run through child elements in external namespaces.
     for ce in fobj.externals:
-        (cns, ctn) = Objects._qsplit(ce.tag)
+        cns, ctn = Objects._qsplit(ce.tag)
         if cns != XMLNS_TCPFLOW:
             continue
         if ctn != "scanner_result":

@@ -3,7 +3,6 @@
 mem_info.py: report the memory used by a program that wrote results to a dfxml file
 """
 
-
 import sys
 import xml.etree.ElementTree as ET
 

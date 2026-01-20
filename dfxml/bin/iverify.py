@@ -37,7 +37,7 @@ def main():
     parser.add_option("-d", "--debug", help="prints debugging info", dest="debug")
     parser.add_option("-g", "--ground", help="ground truth XML file", dest="ground")
     parser.usage = "%prog [options] image.iso"
-    (options, args) = parser.parse_args()
+    options, args = parser.parse_args()
 
     if not options.ground:
         parser.print_help()

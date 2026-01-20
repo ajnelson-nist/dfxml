@@ -32,7 +32,7 @@ def test_empty_object():
     dobj.append(psobj)
 
     # Do file I/O round trip.
-    (tmp_filename, dobj_reconst) = libtest.file_round_trip_dfxmlobject(dobj)
+    tmp_filename, dobj_reconst = libtest.file_round_trip_dfxmlobject(dobj)
     try:
         psobj_reconst = dobj_reconst.partition_systems[0]
     except:
@@ -66,7 +66,7 @@ def test_error_element_order():
     assert el[-1][-1].tag.endswith("error")
 
     # Do file I/O round trip.
-    (tmp_filename, dobj_reconst) = libtest.file_round_trip_dfxmlobject(dobj)
+    tmp_filename, dobj_reconst = libtest.file_round_trip_dfxmlobject(dobj)
     psobj_reconst = dobj_reconst.partition_systems[0]
     try:
         assert psobj_reconst.pstype_str == "gpt"

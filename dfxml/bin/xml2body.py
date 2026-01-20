@@ -8,6 +8,7 @@ Generate a Sluethkit 'body' file from fiwalk XML files.
 Dave Dittrich
 
 """
+
 import sys
 import time
 
@@ -204,7 +205,7 @@ if __name__ == "__main__":
     )
     parser.add_option("-d", "--debug", help="debug", action="store_true")
 
-    (options, args) = parser.parse_args()
+    options, args = parser.parse_args()
 
     if len(args) < 1:
         parser.print_help()

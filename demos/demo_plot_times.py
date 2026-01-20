@@ -15,7 +15,7 @@ if __name__ == "__main__":
 
     parser = OptionParser()
     parser.usage = "%prog [options] (xmlfile or imagefile)"
-    (options, args) = parser.parse_args()
+    options, args = parser.parse_args()
 
     if not args:
         parser.print_usage()

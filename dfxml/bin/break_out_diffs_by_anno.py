@@ -41,24 +41,20 @@ def main():
                 hist[(anno, diff)] += 1
 
     annos = Objects.FileObject._diff_attr_names.keys()
-    print(
-        """
+    print("""
 <table>
   <thead>
     <tr>
       <th>Property</th>
-"""
-    )
+""")
     for anno in annos:
         print("      <th>%s</th>" % anno)
-    print(
-        """
+    print("""
     </tr>
   </thead>
   <tfoot></tfoot>
   <tbody>
-"""
-    )
+""")
     for diff in sorted(Objects.FileObject._all_properties):
         print("    <tr>")
         if diff in Objects.FileObject._incomparable_properties:
@@ -67,12 +63,10 @@ def main():
         for anno in annos:
             print("      <td>%d</td>" % hist[(anno, diff)])
         print("    </tr>")
-    print(
-        """
+    print("""
   </tbody>
 </table>
-"""
-    )
+""")
 
 
 if __name__ == "__main__":

@@ -20,7 +20,7 @@ if __name__ == "__main__":
         help="Already-created DFXML file for imagefile",
     )
     parser.usage = "%prog [options] imagefile zipfile [x1 x2 x3]\nFind files x1, x2, x3 ... in imagefile and write to zipfile"
-    (options, args) = parser.parse_args()
+    options, args = parser.parse_args()
 
     if len(args) < 3:
         parser.print_help()

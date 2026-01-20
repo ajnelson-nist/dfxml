@@ -127,7 +127,7 @@ def _test_file_in_non_fs_levels_deep(
             vobj.append(fobj_vobj)
 
     # Do file I/O round trip.
-    (tmp_filename, dobj_reconst) = libtest.file_round_trip_dfxmlobject(dobj)
+    tmp_filename, dobj_reconst = libtest.file_round_trip_dfxmlobject(dobj)
     try:
         container_stack = [dobj_reconst]
         assert dobj_reconst.files[0].sha512 == TEST_HASH_1
@@ -245,7 +245,7 @@ def _test_file_in_non_fs_levels_flat(
         vobj.append(fobj_vobj)
 
     # Do file I/O round trip.
-    (tmp_filename, dobj_reconst) = libtest.file_round_trip_dfxmlobject(dobj)
+    tmp_filename, dobj_reconst = libtest.file_round_trip_dfxmlobject(dobj)
     try:
         assert dobj_reconst.files[0].sha512 == TEST_HASH_1
 
@@ -326,7 +326,7 @@ def test_solaris_ps_in_partition() -> None:
     psobj_inner.append(fobj_psobj_inner)
 
     # Do file I/O round trip.
-    (tmp_filename, dobj_reconst) = libtest.file_round_trip_dfxmlobject(dobj)
+    tmp_filename, dobj_reconst = libtest.file_round_trip_dfxmlobject(dobj)
     try:
         psobj_outer_reconst = dobj_reconst.partition_systems[0]
         pobj_reconst = psobj_outer_reconst.partitions[0]
@@ -354,7 +354,7 @@ def test_partition_in_partition() -> None:
     pobj_outer.append(pobj_inner)
 
     # Do file I/O round trip.
-    (tmp_filename, dobj_reconst) = libtest.file_round_trip_dfxmlobject(dobj)
+    tmp_filename, dobj_reconst = libtest.file_round_trip_dfxmlobject(dobj)
     try:
         psobj_reconst = dobj_reconst.partition_systems[0]
         pobj_outer_reconst = psobj_reconst.partitions[0]
@@ -377,7 +377,7 @@ def test_hfsplus_in_hfs() -> None:
     vobj_outer.append(vobj_inner)
 
     # Do file I/O round trip.
-    (tmp_filename, dobj_reconst) = libtest.file_round_trip_dfxmlobject(dobj)
+    tmp_filename, dobj_reconst = libtest.file_round_trip_dfxmlobject(dobj)
     try:
         vobj_outer_reconst = dobj_reconst.volumes[0]
         vobj_inner_reconst = vobj_outer_reconst.volumes[0]
@@ -411,7 +411,7 @@ def test_disk_image_in_file_system() -> None:
     diobj.append(fobj_diobj)
 
     # Do file I/O round trip.
-    (tmp_filename, dobj_reconst) = libtest.file_round_trip_dfxmlobject(dobj)
+    tmp_filename, dobj_reconst = libtest.file_round_trip_dfxmlobject(dobj)
     try:
         vobj_reconst = dobj_reconst.volumes[0]
         diobj_reconst = vobj_reconst.disk_images[0]

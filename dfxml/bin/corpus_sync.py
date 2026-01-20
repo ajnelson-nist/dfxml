@@ -38,9 +38,9 @@ if __name__ == "__main__":
     from optparse import OptionParser
 
     parser = OptionParser()
-    (options, args) = parser.parse_args()
+    options, args = parser.parse_args()
 
-    (fn1, fn2) = args[0:2]
+    fn1, fn2 = args[0:2]
     print("# Reading B - the master {}".format(fn1))
     b = CorpusDB()
     b.ingest_dfxml(fn1)

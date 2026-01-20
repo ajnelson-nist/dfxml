@@ -30,7 +30,7 @@ if __name__ == "__main__":
     )
     # parser.add_option("-z", "--zap", help="Zap output directory (erases if present)" dest="zap")
 
-    (options, args) = parser.parse_args()
+    options, args = parser.parse_args()
     if len(args) < 2:
         parser.print_help()
         sys.exit(1)

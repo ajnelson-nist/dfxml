@@ -89,7 +89,7 @@ if __name__ == "__main__":
     parser.usage = "%prog [options] file1 file2 (files MUST be tcpflow DFXML files)"
     parser.add_option("-d", "--debug", help="debug", action="store_true")
 
-    (options, args) = parser.parse_args()
+    options, args = parser.parse_args()
 
     if len(args) != 2:
         parser.print_help()

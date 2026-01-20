@@ -164,7 +164,7 @@ def _read_differential_annotations(
     # _logger.debug("Inverted dictionary: _d = %r" % _d)
     for attr in element.attrib:
         # _logger.debug("Looking for differential annotations: %r" % element.attrib)
-        (ns, an) = _qsplit(attr)
+        ns, an = _qsplit(attr)
         if an in _d and ns == dfxml.XMLNS_DELTA:
             # _logger.debug("Found; adding %r." % _d[an])
             annoset.add(_d[an])
@@ -365,7 +365,7 @@ class DFXMLObject(AbstractParentObject):
             self.version = e.attrib["version"]
 
         for ce in e.findall(".//*"):
-            (cns, cln) = _qsplit(ce.tag)
+            cns, cln = _qsplit(ce.tag)
             if cln == "program":
                 self.program = ce.text
             elif cln == "version":
@@ -1009,7 +1009,7 @@ class ByteRun(AbstractObject):
         _typecheck(e, (ET.Element, ET.ElementTree))
 
         # Split into namespace and tagname.
-        (ns, tn) = _qsplit(e.tag)
+        ns, tn = _qsplit(e.tag)
         assert tn == "byte_run"
 
         copied_attrib = copy.deepcopy(e.attrib)
@@ -1032,7 +1032,7 @@ class ByteRun(AbstractObject):
 
         # Look through direct-child elements for other properties.
         for ce in e.findall("./*"):
-            (cns, ctn) = _qsplit(ce.tag)
+            cns, ctn = _qsplit(ce.tag)
             # _logger.debug("Populating from child element: %r." % ce.tag)
             if ctn == "hashdigest":
                 type_lower = ce.attrib["type"].lower()
@@ -1437,7 +1437,7 @@ class ByteRuns(AbstractObject):
         _typecheck(e, (ET.Element, ET.ElementTree))
 
         # Split into namespace and tagname.
-        (ns, tn) = _qsplit(e.tag)
+        ns, tn = _qsplit(e.tag)
         assert tn == "byte_runs"
 
         if "facet" in e.attrib:
@@ -1445,7 +1445,7 @@ class ByteRuns(AbstractObject):
 
         # Look through direct-child elements to populate run array.
         for ce in e.findall("./*"):
-            (cns, ctn) = _qsplit(ce.tag)
+            cns, ctn = _qsplit(ce.tag)
             if ctn == "byte_run":
                 nbr = ByteRun()
                 nbr.populate_from_Element(ce)
@@ -1596,11 +1596,11 @@ class DiskImageObject(
         _typecheck(e, (ET.Element, ET.ElementTree))
 
         # Split into namespace and tagname.
-        (ns, tn) = _qsplit(e.tag)
+        ns, tn = _qsplit(e.tag)
         assert tn in ["diskimageobject"]
         # Look through only direct-child elements (recursively handing off grandchildren to other populate_from_Element calls).
         for ce in e.findall("./*"):
-            (cns, ctn) = _qsplit(ce.tag)
+            cns, ctn = _qsplit(ce.tag)
             if ctn == "byte_runs":
                 self.byte_runs = ByteRuns()
                 self.byte_runs.populate_from_Element(ce)
@@ -1812,11 +1812,11 @@ class PartitionSystemObject(
         _typecheck(e, (ET.Element, ET.ElementTree))
 
         # Split into namespace and tagname.
-        (ns, tn) = _qsplit(e.tag)
+        ns, tn = _qsplit(e.tag)
         assert tn in ["partitionsystemobject"]
         # Look through direct-child elements to populate object.
         for ce in e.findall("./*"):
-            (cns, ctn) = _qsplit(ce.tag)
+            cns, ctn = _qsplit(ce.tag)
             if ctn == "byte_runs":
                 self.byte_runs = ByteRuns()
                 self.byte_runs.populate_from_Element(ce)
@@ -2099,11 +2099,11 @@ class PartitionObject(
         _typecheck(e, (ET.Element, ET.ElementTree))
 
         # Split into namespace and tagname.
-        (ns, tn) = _qsplit(e.tag)
+        ns, tn = _qsplit(e.tag)
         assert tn in ["partitionobject"]
         # Look through direct-child elements to populate object.
         for ce in e.findall("./*"):
-            (cns, ctn) = _qsplit(ce.tag)
+            cns, ctn = _qsplit(ce.tag)
             if ctn == "byte_runs":
                 self.byte_runs = ByteRuns()
                 self.byte_runs.populate_from_Element(ce)
@@ -2403,13 +2403,13 @@ class VolumeObject(AbstractParentObject, AbstractChildObject, AbstractGeometricO
         _read_differential_annotations(VolumeObject._diff_attr_names, e, self.annos)
 
         # Split into namespace and tagname.
-        (ns, tn) = _qsplit(e.tag)
+        ns, tn = _qsplit(e.tag)
         assert tn in ["volume", "original_volume"]
 
         # Look through direct-child elements to populate object.
         for ce in e.findall("./*"):
             # _logger.debug("ce = %r" % ce)
-            (cns, ctn) = _qsplit(ce.tag)
+            cns, ctn = _qsplit(ce.tag)
             # _logger.debug("cns = %r" % cns)
             # _logger.debug("ctn = %r" % ctn)
             if ctn == "byte_runs":
@@ -3032,7 +3032,7 @@ class TimestampObject(AbstractObject):
         if "prec" in e.attrib:
             self.prec = e.attrib["prec"]
         self.time = e.text
-        (ns, tn) = _qsplit(e.tag)
+        ns, tn = _qsplit(e.tag)
         self.name = tn
 
     def to_Element(self):
@@ -3406,7 +3406,7 @@ class FileObject(AbstractChildObject, AbstractGeometricObject):
         # _logger.debug("FileObject.populate_from_Element(%r)" % e)
 
         # Split into namespace and tagname.
-        (ns, tn) = _qsplit(e.tag)
+        ns, tn = _qsplit(e.tag)
         assert tn in ["fileobject", "original_fileobject", "parent_object"]
 
         # Map "delta:" attributes of <fileobject>s into the self.annos set.
@@ -3416,13 +3416,13 @@ class FileObject(AbstractChildObject, AbstractGeometricObject):
 
         # Look through direct-child elements for other properties.
         for ce in e.findall("./*"):
-            (cns, ctn) = _qsplit(ce.tag)
+            cns, ctn = _qsplit(ce.tag)
             # _logger.debug("Populating from child element: %r." % ce.tag)
 
             # Inherit any marked changes.
             for attr in ce.attrib:
                 # _logger.debug("Inspecting attr for diff. annos: %r." % attr)
-                (ns, an) = _qsplit(attr)
+                ns, an = _qsplit(attr)
                 if an == "changed_property" and ns == dfxml.XMLNS_DELTA:
                     # _logger.debug("Identified changed property: %r." % ctn)
                     # TODO There may be a more elegant way of handling the hashes and any other attribute-dependent element-to-property mapping.  Probably involving XPath.
@@ -4197,7 +4197,7 @@ class OtherNSElementList(list):
 
     @classmethod
     def _check_qname(cls, tagname):
-        (ns, ln) = _qsplit(tagname)
+        ns, ln = _qsplit(tagname)
         if ns == dfxml.XMLNS_DFXML:
             raise ValueError("'External' elements must be a non-DFXML namespace.")
         # Register qname for later output.
@@ -4316,7 +4316,7 @@ class CellObject(AbstractChildObject, AbstractGeometricObject):
         _read_differential_annotations(CellObject._diff_attr_names, e, self.annos)
 
         # Split into namespace and tagname.
-        (ns, tn) = _qsplit(e.tag)
+        ns, tn = _qsplit(e.tag)
         assert tn in ["cellobject", "original_cellobject", "parent_object"]
 
         if e.attrib.get("root"):
@@ -4324,7 +4324,7 @@ class CellObject(AbstractChildObject, AbstractGeometricObject):
 
         # Look through direct-child elements for other properties.
         for ce in e.findall("./*"):
-            (cns, ctn) = _qsplit(ce.tag)
+            cns, ctn = _qsplit(ce.tag)
             if ctn == "alloc":
                 self.alloc = ce.text
             elif ctn == "basename":
@@ -4849,7 +4849,7 @@ class Parser(object):
                 continue
 
             # Split tag name into namespace and local name.
-            (ns, ln) = _qsplit(elem.tag)
+            ns, ln = _qsplit(elem.tag)
 
             if ETevent == "start":
                 if ln == "dfxml":
