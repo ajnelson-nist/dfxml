@@ -21,7 +21,7 @@ With this module, reading disk images or DFXML files is done with the parse or i
 # Further explanation is on PEPs 484 and 563, via: https://stackoverflow.com/a/33533514
 from __future__ import annotations
 
-__version__ = "0.13.0"
+__version__ = "0.13.1"
 
 # Revision Log
 # 2018-07-22 @simsong - removed calls to logging, since this module shouldn't create log files.
@@ -54,14 +54,14 @@ import dfxml  # type: ignore
 _logger = logging.getLogger(os.path.basename(__file__))
 
 # Contains: (namespace, local name, class) qualified XML element name pairs, with a reference to the class that had the problem.
-_warned_elements = set([])
-_warned_byterun_attribs = set([])
+_warned_elements: set[tuple[str, str, type[AbstractObject]]] = set()
+_warned_byterun_attribs: set[str] = set()
 
 # Contains: (hash name, class) pairs, indicating the hash type and on what class it was found.
-_warned_hashes = set([])
+_warned_hashes: set[tuple[str, type[AbstractObject]]] = set()
 
 # Contains: Unexpected 'facet' values on byte_runs elements.
-_warned_byterun_facets = set([])
+_warned_byterun_facets: set[str] = set()
 
 XMLNS_REGXML = "http://www.forensicswiki.org/wiki/RegXML"
 XMLNS_DFXML_EXT = dfxml.XMLNS_DFXML + "#extensions"
